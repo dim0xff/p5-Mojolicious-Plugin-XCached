@@ -1,0 +1,226 @@
+=head1 SYNOPSIS
+
+    use MojoX::Cached;
+    use MojoX::Cached::Driver::SomeDriver;
+
+    # Initialize
+    my $driver = MojoX::Cached::Driver::SomeDriver->new( ... driver options ... );
+    my $cacher = MojoX::Cached->new( driver => $driver );
+
+    # Simple using
+    #
+    # Set
+    $cacher->set( user => { name => 'Dmitry', email => 'dim0xff@gmail.com', ... } );
+
+    # Get
+    my $user = $cacher->get('user');
+
+
+    # Cache method results for 1 hour (3600 seconds)
+    #
+    # Perform (in scalar context):
+    #   $template->render( ... some template data ... )
+    #   and cache result
+    my $rendered = $cacher->cacher(
+        'heavy_template' => $temlate => 'render' =>
+        [ ... some template data ... ],
+        3600
+    );
+
+    # The same, but in list context
+    # Results will be stored separately (means, that method will be called again
+    # in list context)
+    ($rendered) = $cacher->cacher(
+        'heavy_template' => $temlate => 'render' =>
+        [ ... some template data ... ],
+        3600
+    );
+
+    # Later when on call method with same arguments, result will be fetched from
+    # cache (if not expired) respect call context
+
+=head1 DESCRIPTION
+
+Simple cache, which supports data caching, sub/method call results caching.
+You have treat this like L<Memoize> with expiration and different backends.
+
+Available backends:
+
+=over 4
+
+=item L<MojoX::Cached::Driver::Disk>
+
+Slow cache driver with filesystem storage.
+
+=item L<MojoX::Cached::Driver::Mojo>
+
+Cache driver built on top of L</Mojo::Cache>
+
+=back
+
+Debug warning messages could be turn on via C<MOJOX_CACHED_DEBUG=1>
+environment variable.
+
+
+=attr default_expire
+
+Default expiration time in seconds.
+Default is C<undef> (cache forever).
+
+
+=attr driver
+
+Cache L<driver|MojoX::Cached::Driver>.
+Default is L<MojoX::Cached::Driver::Mojo>.
+
+
+=attr flatten_args
+
+Subroutine to make string from sub/method arguments.
+Default is L</default_flatten_args>.
+
+
+=attr name
+
+Debug name for cache. Default is C<XCached>.
+
+
+=method get ($key)
+
+Get cached data by C<$key>
+
+
+=method set ($key, $data, $expire_in?)
+
+Cache C<$data> by C<$key>.
+In addition expiration could be set via C<$expire_in> (default L</default_expire>).
+
+
+=method expire ($key)
+
+Expire cached data by C<$key>.
+
+
+=method cached_sub ($key, \&subroutine, \@arguments, %options?)
+
+Cache data (by C<$key>) returned from C<&subroutine(@arguments)> call
+with respecting call context (LIST or SCALAR).
+
+Available C<options> keys:
+
+=over 4
+
+=item expire_in
+
+Type: B<number>
+
+Key expiration could be set via option C<expire_in> (default L</default_expire>).
+Negative means "expire key".
+
+=item flatten_args
+
+Type: B<coderef>
+
+Subroutine to make string from sub/method arguments for current caching
+(default L</default_flatten_args>).
+
+=back
+
+    my $sub = sub {...};
+
+    # Scalar context
+    # Perform equal to:
+    #   my $value = $sub->( ... arguments ... );
+    my $value = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
+
+    # List context
+    # Perform equal to:
+    #   my @values = $sub->( ... arguments ... );
+    my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ], ( expire_in => 3600 ) );
+
+
+=method cached_method ($key, $object, $method, \@arguments, %options?)
+
+Cache data (by C<$key>) returned from C<$object-E<gt>$method(@arguments)> call
+with respecting call context (LIST OR SCALAR).
+For C<%options> look L</cached_sub>.
+
+    # Scalar context
+    # Perform equal to:
+    #   my $value = $object->some_method( ... arguments ... );
+    my $value = $cached->cached_method(
+            key => $object => some_method => [ ... arguments ...]
+        );
+
+    # List context
+    # Perform equal to:
+    #   my @values = $object->some_method( ... arguments ... );
+    my @values = $cached->cached_method(
+            key => $object => some_method => [ ... arguments ...]
+        );
+
+
+=method cached
+
+Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
+
+    # Get
+    cached($key)
+
+    # Set
+    cached($key, $data, $expire_in?)
+
+    # cached_sub
+    cached($key, \&subroutine, \@arguments, %options)
+
+    # cached_method
+    cached($key, $object, $method, \@arguments, %options)
+
+
+=method fn_key ($key, \@arguments, \&flatten_args?)
+
+Generate cache key for C<$key> and @arguments via C<flatten_args>
+(default L</default_flatten_args>).
+
+
+=method flatten_args ($arguments?, $prepend?, $key?)
+
+C<$arguments> could be HASH, ARRAY, blessed value with C<to_string> method,
+other types will be supposed to be SCALAR.
+If it is blessed and can C<to_string>, then C<to_string> will be used to
+stringify C<$arguments>.
+
+Make string from C<$arguments>
+
+    # Say User implements "to_string" method
+    my $user = User->load( id => 42 );
+
+    # ... and Object doesn't
+    my $obj = Object->new;
+
+    # User(id=42)
+    say $user->to_string;
+
+    # Object=HASH(0xfc75d8)
+    say "$obj";
+
+    # [1,[a,b],{c=>[3,2,1],d=>e},User(id=42),Object=HASH(0xfc75d8)]
+    say flatten_args(
+            [
+                1,
+                [
+                    'a',
+                    'b',
+                ],
+                {
+                    d => 'e',
+                    c => [
+                        3,
+                        2,
+                        1,
+                    ]
+                },
+                $user,
+                $obj
+            ]
+        );
