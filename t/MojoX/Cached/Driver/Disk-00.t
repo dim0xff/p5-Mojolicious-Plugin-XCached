@@ -5,7 +5,9 @@ use warnings;
 
 use Mojo::File;
 
-use MojoX::Cached::Driver::Disk;
+note 'Test for no callbacks';
+
+use_ok('MojoX::Cached::Driver::Disk');
 
 ok(
     my $driver = MojoX::Cached::Driver::Disk->new(

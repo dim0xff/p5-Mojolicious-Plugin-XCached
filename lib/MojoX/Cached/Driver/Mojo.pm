@@ -19,20 +19,22 @@ sub new {
 }
 
 sub get {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
 
-    my $data = $self->_instance->get($key) or return;
+    my $data = $self->_instance->get($key)
+        or return $cb ? $cb->($self) : ();
 
     # Expired
     if ( $data->{expire_at} && $data->{expire_at} < time ) {
-        $self->expire($key);
+        $self->expire( $key, ( $cb ? sub { $cb->($self) } : () ) );
         return;
     }
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub set {
+    my $cb = pop if ref $_[-1] eq 'CODE';
     my ( $self, $key, $value, $expire_in ) = @_;
 
     my $data = {
@@ -42,28 +44,33 @@ sub set {
 
     $self->_instance->set( $key, $data );
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub expire {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
 
     for my $idx ( 0 .. $#{ $self->_instance->{queue} } ) {
         if ( $self->_instance->{queue}[$idx] eq $key ) {
             splice @{ $self->_instance->{queue} }, $idx, 1;
             delete $self->_instance->{cache}{$key};
-            return 1;
+
+            return $cb ? $cb->( $self, 1 ) : 1;
         }
     }
 
-    return 0;
+    return $cb ? $cb->( $self, 0 ) : 0;
 }
 
 sub flush {
-    my $self = shift;
+    my ( $self, $cb ) = @_;
 
     $self->_instance->{queue} = [];
     $self->_instance->{cache} = {};
+
+    $cb->($self) if $cb;
+
+    return $cb ? $cb->() : ();
 }
 
 1;

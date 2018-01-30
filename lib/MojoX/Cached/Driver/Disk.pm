@@ -39,20 +39,22 @@ sub new {
 }
 
 sub get {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
 
-    my $data = $self->_read($key) or return;
+    my $data = $self->_read($key)
+        or return $cb ? $cb->($self) : ();
 
     # Expired
     if ( $data->{expire_at} && $data->{expire_at} < time ) {
-        $self->expire($key);
+        $self->expire( $key, ( $cb ? sub { $cb->($self) } : () ) );
         return;
     }
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub set {
+    my $cb = pop if ref $_[-1] eq 'CODE';
     my ( $self, $key, $value, $expire_in ) = @_;
 
     my $data = {
@@ -62,21 +64,24 @@ sub set {
 
     $self->_write( $key => $data );
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub expire {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
+    my $status = unlink $self->_file($key);
 
-    return unlink $self->_file($key);
+    return $cb ? $cb->( $self, $status ) : $status;
 }
 
 sub flush {
-    my $self = shift;
+    my ( $self, $cb ) = @_;
 
     for my $file ( $self->dir->list_tree->each ) {
         unlink $file;
     }
+
+    return $cb ? $cb->($self) : ();
 }
 
 sub _file {

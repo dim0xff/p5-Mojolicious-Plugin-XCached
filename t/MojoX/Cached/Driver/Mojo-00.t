@@ -3,7 +3,10 @@ use Test::More;
 use strict;
 use warnings;
 
-use MojoX::Cached::Driver::Mojo;
+note 'Test for no callbacks';
+
+use_ok('MojoX::Cached::Driver::Mojo');
+
 
 ok( MojoX::Cached::Driver::Mojo->new, 'Without options' );
 
