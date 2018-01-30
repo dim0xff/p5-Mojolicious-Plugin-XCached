@@ -59,7 +59,7 @@ sub expire {
         }
     }
 
-    return $cb ? $cb->( $self, 0 ) : 0;
+    return $cb ? $cb->( $self, !!0 ) : !!0;
 }
 
 sub flush {

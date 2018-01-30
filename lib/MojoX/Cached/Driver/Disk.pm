@@ -71,7 +71,7 @@ sub expire {
     my ( $self, $key, $cb ) = @_;
     my $status = unlink $self->_file($key);
 
-    return $cb ? $cb->( $self, $status ) : $status;
+    return $cb ? $cb->( $self, !!$status ) : !!$status;
 }
 
 sub flush {

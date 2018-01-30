@@ -121,7 +121,7 @@ subtest 'expire' => sub {
                                 'key',
                                 sub {
                                     shift;
-                                    is( $_[0], 0, 'expire not success' );
+                                    isnt( $_[0], 1, 'expire not success' );
                                 }
                             );
                         }

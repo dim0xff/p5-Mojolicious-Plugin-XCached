@@ -56,7 +56,7 @@ subtest 'expire' => sub {
     @data = $driver->get('key');
     is( ~~ @data, 0, 'expired' );
 
-    is( $driver->expire('key'), 0, 'expire not success' );
+    isnt( $driver->expire('key'), 1, 'expire not success' );
 };
 
 subtest 'driver opts and flush' => sub {
