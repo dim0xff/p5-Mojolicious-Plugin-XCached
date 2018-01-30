@@ -38,6 +38,8 @@ Get cached value by C<$key>. On success returns HASH:
 Cache C<$data> by C<$key>.
 Optional expiration in seconds could be set via C<$expire_in>.
 
+Must return like-L</get> HASH.
+
 
 =method expire ($key)
 
