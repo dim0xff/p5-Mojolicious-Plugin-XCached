@@ -240,7 +240,7 @@ First element represents top level cache layer, last - bottom.
     ]
 
 Each hash requires C<driver> key and optional C<driver_options> key.
-Other keys will be passed to L<MojoX::CachedE<gt>new(...)> as is.
+Other keys will be passed to C<MojoX::CachedE<gt>new(...)> as is.
 
 B<driver> has to be a module name inside C<MojoX::Cached::Driver> namespace
 or started with C<+> sign, to refer full module name.

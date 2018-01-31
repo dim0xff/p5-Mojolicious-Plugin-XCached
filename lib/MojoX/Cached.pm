@@ -316,7 +316,7 @@ Slow cache driver with filesystem storage.
 
 =item L<MojoX::Cached::Driver::Mojo>
 
-Cache driver built on top of L</Mojo::Cache>
+Cache driver built on top of L<Mojo::Cache>
 
 =back
 
@@ -464,7 +464,7 @@ Generate cache key for C<$key> and @arguments via C<flatten_args>
 (default L</default_flatten_args>).
 
 
-=method flatten_args ($arguments?, $prepend?, $key?)
+=method default_flatten_args ($arguments?, $prepend?, $key?)
 
 C<$arguments> could be HASH, ARRAY, blessed value with C<to_string> method,
 other types will be supposed to be SCALAR.
