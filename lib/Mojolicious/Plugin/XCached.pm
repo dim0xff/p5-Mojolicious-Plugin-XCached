@@ -254,7 +254,7 @@ B<driver_options> will be passed to driver constructor (C<new>)
 
     # these options
     driver         => 'Mojo',
-    driver_options => { max_keys => 50 }, 
+    driver_options => { max_keys => 50 },
 
     # will be used as
     MojoX::Cached::Driver::Mojo->new( { max_keys => 50 } )
