@@ -143,6 +143,16 @@ Subroutine to make string from sub/method arguments for current caching
     #   my @values = $sub->( ... arguments ... );
     my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ], ( expire_in => 3600 ) );
 
+    # With callback
+    $cached->cached_method(
+        key => $sub => [ ... arguments ... ],
+        ( expire_in => 3600 ),
+        sub {
+            my ( $cached, @result ) = @_;
+            # @result = $sub->( ... arguments ... );
+        }
+    );
+
 
 =method cached_method ($key, $object, $method, \@arguments, %options?, $cb?)
 
@@ -164,6 +174,14 @@ For C<%options> look L</cached_sub>.
             key => $object => some_method => [ ... arguments ...]
         );
 
+    # With callback
+    $cached->cached_method(
+        key => $object => $some_method => [ ... arguments ... ],
+        sub {
+            my ( $cached, @result ) = @_;
+            # @result = $object->$some_method( ... arguments ... );
+        }
+    );
 
 =method cached
 
