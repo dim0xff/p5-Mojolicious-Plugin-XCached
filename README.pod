@@ -1,4 +1,12 @@
-=head1 SYNOPSIS
+=pod
+
+=encoding UTF-8
+
+=head1 MojoX::Cached
+
+Simple cache which supports data caching, sub/method call results caching.
+
+=head2 SYNOPSIS
 
     use MojoX::Cached;
     use MojoX::Cached::Driver::SomeDriver;
@@ -39,7 +47,7 @@
     # Later when on call method with same arguments, result will be fetched from
     # cache (if not expired) respect call context
 
-=head1 DESCRIPTION
+=head2 DESCRIPTION
 
 Simple cache, which supports data caching, sub/method call results caching.
 You have treat this like L<Memoize> with expiration and different backends.
@@ -58,192 +66,88 @@ Slow cache driver with filesystem storage.
 
 =item L<MojoX::Cached::Driver::Mojo>
 
-Cache driver built on top of L</Mojo::Cache>
+Cache driver built on top of L<Mojo::Cache>
 
 =back
 
 Debug warning messages could be turn on via C<MOJOX_CACHED_DEBUG=1>
 environment variable.
 
+=head1 Mojolicious::Plugin::XCached 
 
-=attr default_expire
+Cache plugin
 
-Default expiration time in seconds.
-Default is C<undef> (cache forever).
+=head2 SYNOPSIS
 
-
-=attr driver
-
-Cache L<driver|MojoX::Cached::Driver>.
-Default is L<MojoX::Cached::Driver::Mojo>.
+    # In your app
+    $app->plugin(XCached => [ ... caches config ... ] );
 
 
-=attr flatten_args
+    # In your controller
+    sub action {
+        my $c = shift;
 
-Subroutine to make string from sub/method arguments.
-Default is L</default_flatten_args>.
+        my $user = $c->xcached('user');
+        if (!$user) {
+            $user = $user_model->load_user( id => $c->param('user_id') );
+            $c->xcached( user => $user, 3600 );
+        }
+
+        $c->render( user => $user );
+    }
+
+    # ... or even like this
+    sub action {
+        my $c = shift;
+
+        my $user = $c->xcached(
+            user => $user_model => load_user =>
+            [ id => $c->param('user_id') ],
+            3600
+        );
+
+        $c->render( user => $user );
+    }
 
 
-=attr name
+    # In your template
+    %= xcinclude( 'common/user/info', $user );
 
-Debug name for cache. Default is C<XCached>.
+    # @common/user/info.html.ep
+    % for $object ( $user->related_objects ) {
+        %= include( 'common/user/related_object' => $object );
+    % }
 
+=head2 DESCRIPTION
 
-=method get ($key, $cb?)
+L<Mojolicious::Plugin::XCached> allows to add layers of caches to your app.
 
-Get cached data by C<$key>
+Caches are implemented via L<MojoX::Cached>.
 
+Plugin adds two helpers:
 
-=method set ($key, $data, $expire_in?, $cb?)
+=over
 
-Cache C<$data> by C<$key>.
-In addition expiration could be set via C<$expire_in> (default L</default_expire>).
+=item L</xcached>
 
+To use caches inside application and/or templates
 
-=method expire ($key)
+=item L</xcinclude>
 
-Expire cached data by C<$key>.
-
-
-=method cached_sub ($key, \&subroutine, \@arguments, %options?, $cb?)
-
-Cache data (by C<$key>) returned from C<&subroutine(@arguments)> call
-with respecting call context (LIST or SCALAR).
-When C<$cb> is passed context forced to LIST.
-
-Available C<options> keys:
-
-=over 4
-
-=item expire_in
-
-Type: B<number>
-
-Key expiration could be set via option C<expire_in> (default L</default_expire>).
-Negative means "expire key".
-
-=item flatten_args
-
-Type: B<coderef>
-
-Subroutine to make string from sub/method arguments for current caching
-(default L</default_flatten_args>).
+To cache rendered templates includes
 
 =back
 
-    my $sub = sub {...};
 
-    # Scalar context
-    # Perform equal to:
-    #   my $value = $sub->( ... arguments ... );
-    my $value = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
+=head1 AUTHOR
 
-    # List context
-    # Perform equal to:
-    #   my @values = $sub->( ... arguments ... );
-    my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ], ( expire_in => 3600 ) );
+Dmitry "dim0xff" Latin <dim0xff@gmail.com>
 
-    # With callback
-    $cached->cached_method(
-        key => $sub => [ ... arguments ... ],
-        ( expire_in => 3600 ),
-        sub {
-            my ( $cached, @result ) = @_;
-            # @result = $sub->( ... arguments ... );
-        }
-    );
+=head1 COPYRIGHT AND LICENSE
 
+This software is copyright (c) 2018 by Dmitry Latin.
 
-=method cached_method ($key, $object, $method, \@arguments, %options?, $cb?)
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
-Cache data (by C<$key>) returned from C<$object-E<gt>$method(@arguments)> call
-with respecting call context (LIST OR SCALAR).
-For C<%options> look L</cached_sub>.
-
-    # Scalar context
-    # Perform equal to:
-    #   my $value = $object->some_method( ... arguments ... );
-    my $value = $cached->cached_method(
-            key => $object => some_method => [ ... arguments ...]
-        );
-
-    # List context
-    # Perform equal to:
-    #   my @values = $object->some_method( ... arguments ... );
-    my @values = $cached->cached_method(
-            key => $object => some_method => [ ... arguments ...]
-        );
-
-    # With callback
-    $cached->cached_method(
-        key => $object => $some_method => [ ... arguments ... ],
-        sub {
-            my ( $cached, @result ) = @_;
-            # @result = $object->$some_method( ... arguments ... );
-        }
-    );
-
-=method cached
-
-Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
-
-    # Get
-    cached($key, $cb?)
-
-    # Set
-    cached($key, $data, $expire_in?, $cb?)
-
-    # cached_sub
-    cached($key, \&subroutine, \@arguments, %options?, $cb?)
-
-    # cached_method
-    cached($key, $object, $method, \@arguments, %options?, $cb?)
-
-
-=method fn_key ($key, \@arguments, \&flatten_args?)
-
-Generate cache key for C<$key> and @arguments via C<flatten_args>
-(default L</default_flatten_args>).
-
-
-=method flatten_args ($arguments?, $prepend?, $key?)
-
-C<$arguments> could be HASH, ARRAY, blessed value with C<to_string> method,
-other types will be supposed to be SCALAR.
-If it is blessed and can C<to_string>, then C<to_string> will be used to
-stringify C<$arguments>.
-
-Make string from C<$arguments>
-
-    # Say User implements "to_string" method
-    my $user = User->load( id => 42 );
-
-    # ... and Object doesn't
-    my $obj = Object->new;
-
-    # User(id=42)
-    say $user->to_string;
-
-    # Object=HASH(0xfc75d8)
-    say "$obj";
-
-    # [1,[a,b],{c=>[3,2,1],d=>e},User(id=42),Object=HASH(0xfc75d8)]
-    say flatten_args(
-            [
-                1,
-                [
-                    'a',
-                    'b',
-                ],
-                {
-                    d => 'e',
-                    c => [
-                        3,
-                        2,
-                        1,
-                    ]
-                },
-                $user,
-                $obj
-            ]
-        );
+=cut
