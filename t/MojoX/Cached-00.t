@@ -5,8 +5,48 @@ use warnings;
 
 use lib 't/lib';
 
+note 'Test for no callbacks';
+
 use TestDriver;
-use MojoX::Cached;
+
+use_ok('MojoX::Cached');
+
+#
+# HELPERS
+#
+
+BEGIN {
+    my $calls = 0;
+
+    sub subroutine {
+        $calls++;
+        return wantarray ? ( $_[0] * 2, 'true' ) : ( $_[0] * 2 );
+    }
+
+    sub subroutine_calls {
+        ($calls) = @_ if @_;
+        $calls;
+    }
+
+    package ThePackage {
+
+        sub new {
+            bless { calls => 0 }, shift;
+        }
+
+        sub method {
+            shift->{calls}++;
+
+            return $_[0] * $_[1];
+        }
+
+        1;
+    };
+}
+
+#
+# TESTS
+#
 
 my $default_expire = 1;
 
@@ -167,40 +207,6 @@ subtest cached => sub {
         [ ( 'get', 'set' ) x 2, ('get') x 8, 'expire' ],
         'cache call status'
     );
-};
-
-# TODO:
-#   * test flatten_args XCache attribute and cached option
-
-#
-# HELPERS
-#
-
-my $calls = 0;
-
-sub subroutine {
-    $calls++;
-    return wantarray ? ( $_[0] * 2, 'true' ) : ( $_[0] * 2 );
-}
-
-sub subroutine_calls {
-    ($calls) = @_ if @_;
-    $calls;
-}
-
-package ThePackage {
-
-    sub new {
-        bless { calls => 0 }, shift;
-    }
-
-    sub method {
-        shift->{calls}++;
-
-        return $_[0] * $_[1];
-    }
-
-    1;
 };
 
 done_testing();

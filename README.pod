@@ -44,6 +44,10 @@
 Simple cache, which supports data caching, sub/method call results caching.
 You have treat this like L<Memoize> with expiration and different backends.
 
+It supports non-blocking interface, but non-blocking feature depends on driver
+implementation. Optional callback C<$cb> could be passed as last argument for
+most of methods.
+
 Available backends:
 
 =over 4
@@ -85,12 +89,12 @@ Default is L</default_flatten_args>.
 Debug name for cache. Default is C<XCached>.
 
 
-=method get ($key)
+=method get ($key, $cb?)
 
 Get cached data by C<$key>
 
 
-=method set ($key, $data, $expire_in?)
+=method set ($key, $data, $expire_in?, $cb?)
 
 Cache C<$data> by C<$key>.
 In addition expiration could be set via C<$expire_in> (default L</default_expire>).
@@ -101,10 +105,11 @@ In addition expiration could be set via C<$expire_in> (default L</default_expire
 Expire cached data by C<$key>.
 
 
-=method cached_sub ($key, \&subroutine, \@arguments, %options?)
+=method cached_sub ($key, \&subroutine, \@arguments, %options?, $cb?)
 
 Cache data (by C<$key>) returned from C<&subroutine(@arguments)> call
 with respecting call context (LIST or SCALAR).
+When C<$cb> is passed context forced to LIST.
 
 Available C<options> keys:
 
@@ -139,7 +144,7 @@ Subroutine to make string from sub/method arguments for current caching
     my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ], ( expire_in => 3600 ) );
 
 
-=method cached_method ($key, $object, $method, \@arguments, %options?)
+=method cached_method ($key, $object, $method, \@arguments, %options?, $cb?)
 
 Cache data (by C<$key>) returned from C<$object-E<gt>$method(@arguments)> call
 with respecting call context (LIST OR SCALAR).
@@ -165,16 +170,16 @@ For C<%options> look L</cached_sub>.
 Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
 
     # Get
-    cached($key)
+    cached($key, $cb?)
 
     # Set
-    cached($key, $data, $expire_in?)
+    cached($key, $data, $expire_in?, $cb?)
 
     # cached_sub
-    cached($key, \&subroutine, \@arguments, %options)
+    cached($key, \&subroutine, \@arguments, %options?, $cb?)
 
     # cached_method
-    cached($key, $object, $method, \@arguments, %options)
+    cached($key, $object, $method, \@arguments, %options?, $cb?)
 
 
 =method fn_key ($key, \@arguments, \&flatten_args?)

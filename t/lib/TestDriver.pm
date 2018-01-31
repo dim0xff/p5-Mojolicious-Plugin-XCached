@@ -8,20 +8,22 @@ has status => sub { [] };
 sub clear_status { shift->{status} = [] }
 
 sub get {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
 
     push( @{ $self->status }, 'get' );
-    my $data = $self->cache->{$key} or return;
+    my $data = $self->cache->{$key}
+        or return $cb ? $cb->($self) : ();
 
     if ( $data->{expire_at} && $data->{expire_at} < time ) {
-        $self->expire($key);
+        $self->expire( $key, ( $cb ? sub { $cb->($self) } : () ) );
         return;
     }
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub set {
+    my $cb = pop if ref $_[-1] eq 'CODE';
     my ( $self, $key, $value, $expire_in ) = @_;
 
     push( @{ $self->status }, 'set' );
@@ -32,21 +34,26 @@ sub set {
 
     $self->cache->{$key} = $data;
 
-    return $data;
+    return $cb ? $cb->( $self, $data ) : $data;
 }
 
 sub expire {
-    my ( $self, $key ) = @_;
+    my ( $self, $key, $cb ) = @_;
 
     push( @{ $self->status }, 'expire' );
+    my $status = exists $self->cache->{$key};
     delete $self->cache->{$key};
+
+    return $cb ? $cb->( $self, $status ) : $status;
 }
 
 sub flush {
-    my $self = shift;
+    my ( $self, $cb ) = @_;
 
     push( @{ $self->status }, 'flush' );
     $self->cache( {} );
+
+    return $cb ? $cb->($self) : ();
 }
 
 
