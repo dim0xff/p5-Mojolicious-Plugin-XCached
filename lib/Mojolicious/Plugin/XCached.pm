@@ -44,7 +44,7 @@ sub register {
         $app->xcached->[$idx] = $xcached;
         $app->helper( "xcached.l$idx" => sub { shift->app->xcached->[$idx] } );
 
-        $app->log->debug("X::Cached loaded ($module), layer $idx");
+        $app->log->debug("XCached layer $idx loaded ($module)");
 
         $cache_index++;
     }
@@ -52,6 +52,8 @@ sub register {
     $app->helper( xcache    => sub { _xcache(@_) } );
     $app->helper( xcaches   => sub { return $cache_index } );
     $app->helper( xcinclude => sub { _xcinclude(@_) } );
+
+    $app->log->debug("XCached loaded. Total layers: $cache_index");
 }
 
 # Layered cache
@@ -71,7 +73,7 @@ sub _xcache {
     my @arguments = shift @_ if @_;
 
     # No XCached
-    if ( $c->stash('NO_XCACHED') ) {
+    if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
 
         # Return nothing if it is "get" for general data
         return unless @arguments;
@@ -101,15 +103,7 @@ sub _xcache {
                 push @chain, sub {
                     return $c->app->xcached->[$idx]->cached(
                         "L$idx" => $chain[$chain_idx],
-                        [
-                            $key,
-                            ( $method // () ),
-                            (
-                                  $sub || $method
-                                ? $arguments[0]
-                                : ()
-                            )
-                        ],
+                        [ $key, ( $method // () ), $arguments[0] ],
                         @rest
                     );
                 };
@@ -127,8 +121,7 @@ sub _xcache {
             }
         }
     }
-    elsif ( $c->xcaches ) {
-
+    else {
         # Cache regular data: use only first level cache
         @chain = (
             sub {
@@ -137,7 +130,6 @@ sub _xcache {
         );
     }
 
-    return unless @chain;
     return $chain[-1]->();
 }
 
@@ -146,7 +138,7 @@ sub _xcinclude {
     my $c = shift;
 
     # No XCached
-    return $c->helpers->include(@_) if $c->stash('NO_XCACHED');
+    return $c->helpers->include(@_) if $c->stash('NO_XCACHED') || !$c->xcaches;
 
     my ( $template, %args ) = ( @_ % 2 ? shift : undef, @_ );
 
