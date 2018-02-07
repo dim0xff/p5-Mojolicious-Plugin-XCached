@@ -11,6 +11,9 @@ use TestDriver;
 
 use_ok('MojoX::Cached');
 
+# TODO:
+#   * test flatten_args XCache attribute and cached option
+
 #
 # HELPERS
 #
@@ -159,11 +162,12 @@ subtest cached => sub {
     $driver->clear_status;
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
-    is_deeply( $driver->status, [ 'get', 'set', 'get' ], 'set status' );
-
-    $driver->clear_status;
     is( $cached->cached('default'), 'value', 'cached->get' );
-    is_deeply( $driver->status, ['get'], 'get status' );
+    is( $cached->cached( default => 'value', 0 ), !!1, 'cached->set (expire)' );
+    is( $cached->cached( default => 'value', 0 ), !!0, 'cached->set (expire)' );
+    is_deeply( $driver->status,
+        [ 'get', 'set', 'get', 'get', 'expire', 'expire' ],
+        'set status' );
 
 
     subroutine_calls(0);
@@ -176,9 +180,10 @@ subtest cached => sub {
         [ 10, 'true' ],
         "list cached->subroutine / call $_"
     ) for ( 1 .. 5 );
+    $cached->cached( subroutine => \&subroutine => [5], ( expire_in => 0 ) );
     is_deeply(
         $driver->status,
-        [ ( 'get', 'set', ('get') x 4 ) x 2 ],
+        [ ( 'get', 'set', ('get') x 4 ) x 2, 'expire' ],
         'cache call status'
     );
 

@@ -341,6 +341,32 @@ subtest cached => sub {
     );
 
 
+    $driver->clear_status;
+    $cached->cached(
+        'default',
+        undef, 0,
+        sub {
+            is( my $cached = shift, $cached, 'instance' );
+            my ($status) = @_;
+
+            is( $status, !!1, 'cached->expire 1' );
+
+            $cached->cached(
+                'default',
+                undef, 0,
+                sub {
+                    is( my $cached = shift, $cached, 'instance' );
+                    my ($status) = @_;
+
+                    is( $status, !!0, 'cached->expire 0' );
+                    is_deeply( $driver->status, [ 'expire', 'expire' ],
+                        'get status' );
+                }
+            );
+        }
+    );
+
+
     subroutine_calls(0);
     $driver->clear_status;
     for my $n ( 1 .. 5 ) {

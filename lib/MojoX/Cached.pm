@@ -95,8 +95,10 @@ sub cached {
         }
         else {
             # Regular data
+            my ( $data, $expire_in ) = @_;
 
-            my @args = @_;
+            return $self->expire( $key, ( $cb // () ) )
+                if ( $expire_in // 1 ) <= 0;
 
             my $next = sub {
                 my ( $self, @data ) = @_;
@@ -107,7 +109,7 @@ sub cached {
                 }
 
                 # Cache data
-                return $self->set( $key, @args, ( $cb // () ) );
+                return $self->set( $key, $data, $expire_in, ( $cb // () ) );
             };
 
             if ($cb) {
@@ -470,7 +472,7 @@ Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
     # Get
     cached($key, $cb?)
 
-    # Set
+    # Set (or expire if $expire_in == 0)
     cached($key, $data, $expire_in?, $cb?)
 
     # cached_sub
