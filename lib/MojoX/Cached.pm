@@ -4,7 +4,7 @@ package MojoX::Cached;
 
 use Mojo::Base -base;
 
-use Mojo::Util qw(md5_sum);
+use Digest::MD5 qw(md5_hex);
 use Scalar::Util qw(blessed);
 
 use MojoX::Cached::Driver::Mojo;
@@ -206,9 +206,9 @@ sub fn_key {
 
     $key = $key . '(' . $self->_flatten_args($arguments) . ')';
 
-    warn "-- @{[$self->name]} key @{[md5_sum($key)]} / $key\n\n" if DEBUG;
+    warn "-- @{[$self->name]} key @{[md5_hex($key)]} / $key\n\n" if DEBUG;
 
-    return md5_sum($key);
+    return md5_hex($key);
 }
 
 sub default_flatten_args {
