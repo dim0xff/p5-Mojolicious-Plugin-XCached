@@ -15,6 +15,7 @@ use constant DEBUG => $ENV{MOJOX_CACHED_DEBUG};
 has 'default_expire';
 has 'driver'       => sub { MojoX::Cached::Driver::Mojo->new };
 has 'flatten_args' => sub { sub { shift->default_flatten_args(@_) } };
+has 'use_fn_key'   => 1;
 has 'name'         => 'XCached';
 #>>>
 
@@ -133,11 +134,13 @@ sub cached_sub {
 
     # Respect context
     my $is_list_context = $cb ? 1 : !!wantarray;
-    $key = ( $is_list_context ? 'LIST' : 'SCALAR' ) . ":$key";
+    $key = ( $is_list_context ? 'LIST' : 'SCALAR' ) . ":$key"
+        if $opts{fn_key} // $self->use_fn_key;
 
     warn "-- @{[$self->name]} sub $key\n\n" if DEBUG;
 
-    $key = $self->fn_key( $key => $arguments, $opts{flatten_args} );
+    $key = $self->fn_key( $key => $arguments, $opts{flatten_args} )
+        if $opts{fn_key} // $self->use_fn_key;
 
     # Expiration
     return $self->expire( $key, ( $cb // () ) )
@@ -152,8 +155,8 @@ sub cached_sub {
 
             return
                   $cb ? $cb->( $self, @{ $data[0] } )
-                : $is_list_context ? @{ $data[0] }
-                :                    $data[0];
+                : $is_list_context && ref $data[0] eq 'ARRAY' ? @{ $data[0] }
+                :                                               $data[0];
         }
 
         # Not found. Cache it!
@@ -191,12 +194,17 @@ sub cached_sub {
 }
 
 sub cached_method {
-    my ( $self, $key, $obj, $method, $arguments, @opts ) = @_;
+    my $cb = pop if ref $_[-1] eq 'CODE';
+
+    my ( $self, $key, $obj, $method, $arguments, %opts ) = @_;
 
     warn "-- @{[$self->name]} method $key\n\n" if DEBUG;
 
-    return $self->cached_sub( "$key->$method", sub { $obj->$method(@_) },
-        $arguments, @opts );
+    return $self->cached_sub(
+        ( $opts{fn_key} // $self->use_fn_key ? "$key->$method" : $key ),
+        sub { $obj->$method(@_) },
+        $arguments, %opts, ( $cb // () )
+    );
 }
 
 sub fn_key {
@@ -347,6 +355,13 @@ Default is L</default_flatten_args>.
 Debug name for cache. Default is C<XCached>.
 
 
+=attr use_fn_key
+
+Boolean value, which indicates if L</fn_key> should be used
+to generate cache key for subroutine/method call.
+Default is C<1> (true).
+
+
 =method get ($key, $cb?)
 
 Get cached data by C<$key>
@@ -365,11 +380,11 @@ Expire cached data by C<$key>.
 
 =method cached_sub ($key, \&subroutine, \@arguments, %options?, $cb?)
 
-Cache data (by C<$key>) returned from C<&subroutine(@arguments)> call
-with respecting call context (LIST or SCALAR).
+Cache data (by C<$key> or L<functional key|/fn_key>) returned from
+C<&subroutine(@arguments)> call with respecting call context (LIST or SCALAR).
 When C<$cb> is passed context forced to LIST.
 
-Available C<options> keys:
+Available C<options>:
 
 =over 4
 
@@ -386,6 +401,13 @@ Type: B<coderef>
 
 Subroutine to make string from sub/method arguments for current caching
 (default L</default_flatten_args>).
+
+=item fn_key
+
+Type: B<bool>
+
+Indicate if data has to be cached by L<functional key|/fn_key>
+(default L</use_fn_key>).
 
 =back
 

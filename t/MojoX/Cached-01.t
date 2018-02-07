@@ -396,4 +396,67 @@ subtest cached => sub {
     );
 };
 
+subtest fn_key => sub {
+    $driver->clear_status;
+
+    my $obj = ThePackage->new;
+
+    for my $t (
+        [
+            'use_fn_key => 1',
+            1,
+            [
+                'get', 'set', 'get', 'get', 'set',    # scalar sub
+                'get', 'get', 'get',            # list sub
+                'get', 'set', 'get', 'get',     # scalar obj
+                'get', 'get', 'get',            # list obj
+            ]
+        ],
+
+        [
+            'use_fn_key => 0',
+            0,
+            [
+                'get', 'set', 'get', 'set', 'get',    # scalar sub
+                'get', 'get', 'get',            # list sub
+                'get', 'get', 'set', 'get',     # scalar obj
+                'get', 'get', 'get',            # list obj
+            ],
+        ],
+        )
+    {
+        subtest $t->[0] => sub {
+            $cached->use_fn_key( $t->[1] );
+            $driver->flush;
+            $driver->clear_status;
+
+            #<<< no tidy
+            $cached->cached_sub( key => \&subroutine, [1], sub {} );
+            $cached->cached_sub( key => \&subroutine, [1], fn_key => 1, sub {} );
+            $cached->cached_sub( key => \&subroutine, [1], fn_key => 0, sub {} );
+
+            () = $cached->cached_sub( key => \&subroutine, [1], sub {} );
+            () = $cached->cached_sub( key => \&subroutine, [1], fn_key => 1, sub {} );
+            () = $cached->cached_sub( key => \&subroutine, [1], fn_key => 0, sub {} );
+
+            $cached->cached_method( key => $obj => method => [3, 2], sub {} );
+            $cached->cached_method( key => $obj => method => [3, 2], fn_key => 1, sub {} );
+            $cached->cached_method( key => $obj => method => [3, 2], fn_key => 0, sub {} );
+
+            () = $cached->cached_method( key => $obj => method => [3, 2], sub {} );
+            () = $cached->cached_method( key => $obj => method => [3, 2], fn_key => 1, sub {} );
+            () = $cached->cached_method( key => $obj => method => [3, 2], fn_key => 0, sub {} );
+            #>>>
+
+            my $sub_list_key = $cached->fn_key( 'LIST:key', [1] );
+            my $obj_list_key = $cached->fn_key( 'LIST:key->method', [ 3, 2 ] );
+
+            is_deeply( [ sort keys %{ $driver->cache } ],
+                [ sort 'key', $sub_list_key, $obj_list_key ] );
+
+            is_deeply( $driver->status, $t->[2], 'cache call status' );
+        };
+    }
+};
+
 done_testing();
