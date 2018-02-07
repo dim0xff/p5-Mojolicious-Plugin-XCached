@@ -71,32 +71,34 @@ sub _xcache {
 
     # Data to be cached
     my @arguments = shift @_ if @_;
+    my @rest = @_;
 
     # No XCached
     if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
+        my $cb = pop @rest if ref $rest[-1] eq 'CODE';
 
         # Return nothing if it is "get" for general data
         return unless @arguments;
 
         # It is "set", return data needed to be cached
         if ($sub) {
-            return $sub->( @{ $arguments[0] || [] } );
+            return $cb->( undef, $sub->( @{ $arguments[0] || [] } ) );
         }
         elsif ( $obj && $method ) {
-            return $obj->$method( @{ $arguments[0] || [] } );
+            return $cb->( undef, $obj->$method( @{ $arguments[0] || [] } ) );
         }
         else {
-            return $arguments[0];
+            return $cb->( undef, $arguments[0] );
         }
     }
-
-    my @rest = @_;
 
     # Create chain of caches (from lower to top)
     my @chain;
 
     # Cache method/sub call
     if ( $sub || $method ) {
+        my $cb = pop @rest if ref $rest[-1] eq 'CODE';
+
         for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
             if (@chain) {
                 my $chain_idx = $#chain;
@@ -104,7 +106,14 @@ sub _xcache {
                     return $c->app->xcached->[$idx]->cached(
                         "L$idx" => $chain[$chain_idx],
                         [ $key, ( $method // () ), $arguments[0] ],
-                        @rest
+                        @rest,
+                        (
+                              $cb
+                            ? $idx
+                                    ? sub { shift; @_; }
+                                    : $cb
+                            : ()
+                        )
                     );
                 };
             }
@@ -115,7 +124,13 @@ sub _xcache {
                         ( $sub    // () ),
                         ( $obj    // () ),
                         ( $method // () ),
-                        @arguments, @rest
+                        @arguments,
+                        @rest,
+                        (
+                            $cb
+                            ? sub { shift; @_; }
+                            : ()
+                        )
                     );
                 };
             }
