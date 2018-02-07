@@ -82,13 +82,19 @@ sub _xcache {
 
         # It is "set", return data needed to be cached
         if ($sub) {
-            return $cb->( undef, $sub->( @{ $arguments[0] || [] } ) );
+            return $cb
+                ? $cb->( undef, $sub->( @{ $arguments[0] || [] } ) )
+                : $sub->( @{ $arguments[0] || [] } );
         }
         elsif ( $obj && $method ) {
-            return $cb->( undef, $obj->$method( @{ $arguments[0] || [] } ) );
+            return $cb
+                ? $cb->( undef, $obj->$method( @{ $arguments[0] || [] } ) )
+                : $obj->$method( @{ $arguments[0] || [] } );
         }
         else {
-            return $cb->( undef, $arguments[0] );
+            return $cb
+                ? $cb->( undef, $arguments[0] )
+                : $arguments[0];
         }
     }
 
