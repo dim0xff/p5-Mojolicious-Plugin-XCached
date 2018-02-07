@@ -66,96 +66,145 @@ is( $cached->driver, $driver, 'driver ref' );
 
 my $key1 = { data => [ 1, 2, 3 ] };
 subtest set => sub {
-    $cached->set(
-        key1 => $key1,
-        $default_expire * 2,
-        sub {
-            is( shift, $cached, 'instance' );
+    is(
+        $cached->set(
+            key1 => $key1,
+            $default_expire * 2,
+            sub {
+                is( shift, $cached, 'instance' );
 
-            is_deeply( $_[0], $key1, 'set with default_expire * 2' );
+                is_deeply( $_[0], $key1, 'set with default_expire * 2' );
 
-            ok( exists $driver->cache->{key1}, 'set key' );
-            is_deeply( $driver->cache->{key1}{value}, $key1, 'cached data' );
+                ok( exists $driver->cache->{key1}, 'set key' );
+                is_deeply( $driver->cache->{key1}{value}, $key1,
+                    'cached data' );
 
-            is(
-                $driver->cache->{key1}{expire_at},
-                time + $default_expire * 2,
-                'default expire * 2'
-            );
+                is(
+                    $driver->cache->{key1}{expire_at},
+                    time + $default_expire * 2,
+                    'default expire * 2'
+                );
 
-            $cached->set(
-                key1 => $key1,
-                sub {
-                    shift;
+                is(
+                    $cached->set(
+                        key1 => $key1,
+                        sub {
+                            shift;
 
-                    is_deeply( $_[0], $key1, 'default set' );
+                            is_deeply( $_[0], $key1, 'default set' );
 
-                    is(
-                        $driver->cache->{key1}{expire_at},
-                        time + $default_expire,
-                        'default expire'
-                    );
-                }
-            );
-        }
+                            is(
+                                $driver->cache->{key1}{expire_at},
+                                time + $default_expire,
+                                'default expire'
+                            );
+
+                            return 'OK 1';
+                        }
+                    ),
+                    'OK 1',
+                    '->set OK'
+                );
+
+                return 'OK 2';
+            }
+        ),
+        'OK 2',
+        '->set OK'
     );
 };
 
 subtest get => sub {
-    $cached->get(
-        'key1',
-        sub {
-            is( shift, $cached, 'instance' );
-            my ($data) = @_;
-            is_deeply( $data, $key1, 'retrieved data is equal to cached' );
+    is(
+        $cached->get(
+            'key1',
+            sub {
+                is( shift, $cached, 'instance' );
+                my ($data) = @_;
+                is_deeply( $data, $key1, 'retrieved data is equal to cached' );
 
-            sleep( $default_expire + 1 );
-            $cached->get(
-                'key1',
-                sub {
-                    shift;
-                    my ($data) = @_;
-                    is( $data, undef, 'data is expired' );
-                }
-            );
-        }
-    );
-};
-
-subtest expire => sub {
-    $cached->set(
-        key1 => $key1,
-        sub {
-            shift;
-
-            is_deeply( $_[0], $key1, 'data in cache' );
-
-            $cached->expire(
-                'key1',
-                sub {
-                    is( shift, $cached, 'instance' );
-                    my $status = shift;
-                    is( $status, 1, 'expire' );
+                sleep( $default_expire + 1 );
+                is(
                     $cached->get(
                         'key1',
                         sub {
                             shift;
                             my ($data) = @_;
                             is( $data, undef, 'data is expired' );
-                        }
-                    );
-                }
-            );
 
-            $cached->expire(
-                'key1',
-                sub {
-                    is( shift, $cached, 'instance' );
-                    my $status = shift;
-                    isnt( $status, 1, 'already expired' );
-                }
-            );
-        }
+                            return 'OK 1';
+                        }
+                    ),
+                    'OK 1',
+                    '->get OK'
+                );
+
+                return 'OK 2';
+            }
+        ),
+        'OK 2',
+        '->get OK'
+    );
+};
+
+subtest expire => sub {
+    is(
+        $cached->set(
+            key1 => $key1,
+            sub {
+                shift;
+
+                is_deeply( $_[0], $key1, 'data in cache' );
+
+                is(
+                    $cached->expire(
+                        'key1',
+                        sub {
+                            is( shift, $cached, 'instance' );
+                            my $status = shift;
+                            is( $status, 1, 'expire' );
+                            is(
+                                $cached->get(
+                                    'key1',
+                                    sub {
+                                        shift;
+                                        my ($data) = @_;
+                                        is( $data, undef, 'data is expired' );
+
+                                        return 'OK 1';
+                                    }
+                                ),
+                                'OK 1',
+                                '->get OK'
+                            );
+
+                            return 'OK 2';
+                        }
+                    ),
+                    'OK 2',
+                    '->expire OK'
+                );
+
+                is(
+                    $cached->expire(
+                        'key1',
+                        sub {
+                            is( shift, $cached, 'instance' );
+                            my $status = shift;
+                            isnt( $status, 1, 'already expired' );
+
+                            return 'OK 3';
+                        }
+                    ),
+                    'OK 3',
+                    '->set OK'
+                );
+
+                return 'OK';
+            }
+        ),
+        'OK',
+        '->set OK'
     );
 };
 

@@ -15,8 +15,13 @@ sub get {
         or return $cb ? $cb->($self) : ();
 
     if ( $data->{expire_at} && $data->{expire_at} < time ) {
-        $self->expire( $key, ( $cb ? sub { $cb->($self) } : () ) );
-        return;
+        if ($cb) {
+            return $self->expire( $key, sub { $cb->($self) } );
+        }
+        else {
+            $self->expire($key);
+            return;
+        }
     }
 
     return $cb ? $cb->( $self, $data ) : $data;
@@ -44,7 +49,7 @@ sub expire {
     my $status = exists $self->cache->{$key};
     delete $self->cache->{$key};
 
-    return $cb ? $cb->( $self, $status ) : $status;
+    return $cb ? $cb->( $self, !!$status ) : !!$status;
 }
 
 sub flush {
