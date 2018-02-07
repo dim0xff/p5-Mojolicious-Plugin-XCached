@@ -46,8 +46,13 @@ sub get {
 
     # Expired
     if ( $data->{expire_at} && $data->{expire_at} < time ) {
-        $self->expire( $key, ( $cb ? sub { $cb->($self) } : () ) );
-        return;
+        if ($cb) {
+            return $self->expire( $key, sub { $cb->($self) } );
+        }
+        else {
+            $self->expire($key);
+            return;
+        }
     }
 
     return $cb ? $cb->( $self, $data ) : $data;
