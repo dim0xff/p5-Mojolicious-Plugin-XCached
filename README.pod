@@ -2,6 +2,72 @@
 
 =encoding UTF-8
 
+=head1 Mojolicious::Plugin::XCached
+
+Cache plugin
+
+=head2 SYNOPSIS
+
+    # In your app
+    $app->plugin(XCached => [ ... caches config ... ] );
+
+
+    # In your controller
+    sub action {
+        my $c = shift;
+
+        my $user = $c->xcached('user');
+        if (!$user) {
+            $user = $user_model->load_user( id => $c->param('user_id') );
+            $c->xcached( user => $user, 3600 );
+        }
+
+        $c->render( user => $user );
+    }
+
+    # ... or even like this
+    sub action {
+        my $c = shift;
+
+        my $user = $c->xcached(
+            user => $user_model => load_user =>
+            [ id => $c->param('user_id') ],
+            3600
+        );
+
+        $c->render( user => $user );
+    }
+
+
+    # In your template
+    %= xcinclude( 'common/user/info', $user );
+
+    # @common/user/info.html.ep
+    % for $object ( $user->related_objects ) {
+        %= include( 'common/user/related_object' => $object );
+    % }
+
+=head2 DESCRIPTION
+
+L<Mojolicious::Plugin::XCached> allows to add layers of caches to your app.
+
+Caches are implemented via L<MojoX::Cached>.
+
+Plugin adds two helpers:
+
+=over
+
+=item L</xcached>
+
+To use caches inside application and/or templates
+
+=item L</xcinclude>
+
+To cache rendered templates includes
+
+=back
+
+
 =head1 MojoX::Cached
 
 Simple cache which supports data caching, sub/method call results caching.
@@ -73,70 +139,6 @@ Cache driver built on top of L<Mojo::Cache>
 Debug warning messages could be turn on via C<MOJOX_CACHED_DEBUG=1>
 environment variable.
 
-=head1 Mojolicious::Plugin::XCached 
-
-Cache plugin
-
-=head2 SYNOPSIS
-
-    # In your app
-    $app->plugin(XCached => [ ... caches config ... ] );
-
-
-    # In your controller
-    sub action {
-        my $c = shift;
-
-        my $user = $c->xcached('user');
-        if (!$user) {
-            $user = $user_model->load_user( id => $c->param('user_id') );
-            $c->xcached( user => $user, 3600 );
-        }
-
-        $c->render( user => $user );
-    }
-
-    # ... or even like this
-    sub action {
-        my $c = shift;
-
-        my $user = $c->xcached(
-            user => $user_model => load_user =>
-            [ id => $c->param('user_id') ],
-            3600
-        );
-
-        $c->render( user => $user );
-    }
-
-
-    # In your template
-    %= xcinclude( 'common/user/info', $user );
-
-    # @common/user/info.html.ep
-    % for $object ( $user->related_objects ) {
-        %= include( 'common/user/related_object' => $object );
-    % }
-
-=head2 DESCRIPTION
-
-L<Mojolicious::Plugin::XCached> allows to add layers of caches to your app.
-
-Caches are implemented via L<MojoX::Cached>.
-
-Plugin adds two helpers:
-
-=over
-
-=item L</xcached>
-
-To use caches inside application and/or templates
-
-=item L</xcinclude>
-
-To cache rendered templates includes
-
-=back
 
 
 =head1 AUTHOR
