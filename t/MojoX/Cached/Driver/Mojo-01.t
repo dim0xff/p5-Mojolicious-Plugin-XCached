@@ -27,17 +27,25 @@ subtest 'get/set' => sub {
                 'set data' );
 
 
-            $driver->get(
-                'key',
-                sub {
-                    is( shift(@_), $driver, 'driver' );
+            is(
+                $driver->get(
+                    'key',
+                    sub {
+                        is( shift(@_), $driver, 'driver' );
 
-                    my @data = @_;
-                    is( ~~ @data, 1, 'get' );
-                    is_deeply( $data[0],
-                        { value => { data => 'data' }, expire_at => undef },
-                        '...data' );
-                }
+                        my @data = @_;
+                        is( ~~ @data, 1, 'get' );
+                        is_deeply(
+                            $data[0],
+                            { value => { data => 'data' }, expire_at => undef },
+                            '...data'
+                        );
+
+                        return "OK";
+                    }
+                ),
+                'OK',
+                '->get OK'
             );
         }
     );
@@ -52,7 +60,7 @@ subtest 'get/set with expire_in' => sub {
         sub {
             ok( @_, 'set' );
 
-            $driver->get(
+            is($driver->get(
                 'key',
                 sub {
                     my $driver = shift;
@@ -70,16 +78,20 @@ subtest 'get/set with expire_in' => sub {
                     note 'sleep...';
                     sleep(2);
 
-                    $driver->get(
+                    is($driver->get(
                         'key',
                         sub {
                             shift;
                             my @data = @_;
                             is( ~~ @data, 0, 'expired' );
+
+                            return 'OK';
                         }
-                    );
+                    ), 'OK', '->get OK');
+
+                    return 'OK';
                 }
-            );
+            ), 'OK', '->get OK');
         }
     );
 };
