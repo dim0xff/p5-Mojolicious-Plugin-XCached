@@ -308,6 +308,7 @@ subtest cached_method => sub {
 
 subtest cached => sub {
     $driver->clear_status;
+    my $cb_called = 0;
     $cached->cached(
         default => 'value',
         sub {
@@ -323,12 +324,17 @@ subtest cached => sub {
                     is( $value, 'value', 'cached->set' );
                     is_deeply( $driver->status, [ 'get', 'set', 'get' ],
                         'set status' );
+                    $cb_called = 1;
                 }
             );
+            is( $cb_called, 1, '->get(key, data, cb) cb called' );
+            $cb_called = 2;
         }
     );
+    is( $cb_called, 2, '->get(key, data, cb) cb called' );
 
     $driver->clear_status;
+    $cb_called = 0;
     $cached->cached(
         'default',
         sub {
@@ -337,8 +343,10 @@ subtest cached => sub {
 
             is( $value, 'value', 'cached->set' );
             is_deeply( $driver->status, ['get'], 'get status' );
+            $cb_called = 1;
         }
     );
+    ok( $cb_called, '->get(key, cb) cb called' );
 
 
     $driver->clear_status;

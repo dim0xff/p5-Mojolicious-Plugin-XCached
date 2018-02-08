@@ -123,7 +123,7 @@ sub cached {
 
     # Get
     else {
-        return $self->get($key);
+        return $self->get( $key, ( $cb // () ) );
     }
 }
 
