@@ -73,9 +73,7 @@ sub flush {
     $self->_instance->{queue} = [];
     $self->_instance->{cache} = {};
 
-    $cb->($self) if $cb;
-
-    return $cb ? $cb->() : ();
+    return $cb ? $cb->($self) : ();
 }
 
 1;
