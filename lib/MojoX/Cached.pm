@@ -222,7 +222,7 @@ sub get_cache_key {
     if ( @_ && ref $_[0] eq 'CODE' ) {
         $sub = shift;
     }
-    elsif ( @_ && blessed( $_[0] ) && $_[0]->can( $_[1] ) ) {
+    elsif ( @_ > 1 && blessed( $_[0] ) && $_[0]->can( $_[1] ) ) {
         $obj    = shift;
         $method = shift;
     }
