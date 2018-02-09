@@ -23,7 +23,7 @@ has 'name'         => 'XCached';
 sub get {
     my ( $self, $key, $cb ) = @_;
 
-    warn "-- @{[$self->name]} get '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->get '$key'\n\n" if DEBUG;
 
     # Callback
     if ($cb) {
@@ -46,7 +46,7 @@ sub set {
 
     my ( $self, $key, $data, $expire_in ) = @_;
 
-    warn "-- @{[$self->name]} set '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->set '$key'\n\n" if DEBUG;
 
     $expire_in //= $self->default_expire;
 
@@ -70,7 +70,7 @@ sub set {
 sub expire {
     my ( $self, $key, $cb ) = @_;
 
-    warn "-- @{[$self->name]} expire '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->expire '$key'\n\n" if DEBUG;
 
     return $self->driver->expire( $key,
         ( $cb ? sub { shift; $cb->( $self, @_ ); } : () ) );
@@ -132,7 +132,7 @@ sub cached_sub {
 
     my ( $self, $key ) = ( shift, shift );
 
-    warn "-- @{[$self->name]} sub '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->cached_sub '$key'\n\n" if DEBUG;
 
     my ( $sub, $arguments, %opts ) = @_;
     $arguments //= [];
@@ -152,7 +152,8 @@ sub cached_sub {
 
         # Found, return cached data
         if (@data) {
-            warn "-- @{[$self->name]} sub data found for '$key'\n\n" if DEBUG;
+            warn "-- @{[$self->name]} ->cached_sub data found for '$key'\n\n"
+                if DEBUG;
 
             return
                   $cb ? $cb->( $self, @{ $data[0] } )
@@ -197,7 +198,7 @@ sub cached_sub {
 sub cached_method {
     my ( $self, $key ) = ( shift, shift );
 
-    warn "-- @{[$self->name]} method '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->cached_method '$key'\n\n" if DEBUG;
 
     $key = $self->get_cache_key( $key, !!wantarray, @_ );
 
@@ -213,6 +214,7 @@ sub cached_method {
 
 sub get_cache_key {
     my $cb = pop if ref $_[-1] eq 'CODE';
+
     my ( $self, $key, $wantarray ) = ( shift, shift, shift );
 
     # Determine caller type
@@ -233,15 +235,21 @@ sub get_cache_key {
     # fn_key using is disabled, return original $key
     return $key unless $opts{fn_key} // $self->use_fn_key;
 
+    warn "-- @{[$self->name]} ->get_cache_key for '$key'...\n\n" if DEBUG;
+
     # Modify $key for method call
     if ( $obj && $method ) {
         $key = "$key->$method";
-        warn "-- @{[$self->name]} set method cache key to '$key'\n\n" if DEBUG;
+        warn
+            "-- @{[$self->name]} ->get_cache_key upgrade key to method cache key: '$key'\n\n"
+            if DEBUG;
     }
 
     # Respect call context
     $key = ( $cb || $wantarray ? 'LIST' : 'SCALAR' ) . ":$key";
-    warn "-- @{[$self->name]} repsect context cache key '$key'\n\n" if DEBUG;
+    warn
+        "-- @{[$self->name]} ->get_cache_key repsect context cache key '$key'\n\n"
+        if DEBUG;
 
     return $self->fn_key( $key => $arguments, $opts{flatten_args} );
 }
@@ -253,7 +261,8 @@ sub fn_key {
 
     $key = $key . '(' . $self->_flatten_args($arguments) . ')';
 
-    warn "-- @{[$self->name]} key '@{[md5_hex($key)]}' / '$key'\n\n" if DEBUG;
+    warn "-- @{[$self->name]} ->fn_key '@{[md5_hex($key)]}' / '$key'\n\n"
+        if DEBUG;
 
     return md5_hex($key);
 }
