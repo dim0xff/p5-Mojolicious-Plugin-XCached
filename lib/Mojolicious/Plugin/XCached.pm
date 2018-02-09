@@ -97,66 +97,59 @@ sub _xcache {
         }
     }
 
+    $key = $c->app->xcached->[0]->get_cache_key(
+        $key, wantarray,
+        ( $sub    // () ),
+        ( $obj    // () ),
+        ( $method // () ),
+        @arguments, @rest, ( $cb // () )
+    );
+
+    # Cache for regular data: change it to subroutine call
+    if ( !$sub && !$method ) {
+        $sub = sub {@_};
+        @rest = ( expire_in => shift @rest ) if @rest;
+        @arguments = ( [@arguments] );
+    }
+
     # Expire?
     my $to_expire = ( {@rest}->{expire_in} // 1 ) <= 0;
 
     # Layers of caches (direction: bottom-top)
     my @layers;
+    for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
+        my ( $l_idx, @params, @cb ) = ($#layers);
 
-    # Cache method/sub call
-    if ( $sub || $method ) {
-        my $key = $c->app->xcached->[0]->get_cache_key(
-            $key, wantarray,
-            ( $sub    // () ),
-            ( $obj    // () ),
-            ( $method // () ),
-            @arguments, @rest, ( $cb // () )
-        );
+        if (@layers) {
+            @params = ( $layers[$l_idx], [], );
+        }
+        else {
+            @params = (
+                ( $sub    // () ),
+                ( $obj    // () ),
+                ( $method // () ), @arguments,
+            );
+        }
 
-        # Note about direction: 0 - lower layer
-        for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
-            my ( $l_idx, @params, @cb ) = ($#layers);
-
-            if (@layers) {
-                @params = ( $layers[$l_idx], [], );
+        if ($cb) {
+            if ($idx) {
+                push @cb,
+                    $to_expire
+                    ? sub { shift; $layers[ $l_idx + 2 ]->(); @_; }
+                    : sub { shift; @_; };
             }
             else {
-                @params = (
-                    ( $sub    // () ),
-                    ( $obj    // () ),
-                    ( $method // () ), @arguments,
-                );
+                push @cb, $cb;
             }
-
-            if ($cb) {
-                if ($idx) {
-                    push @cb,
-                        $to_expire
-                        ? sub { shift; $layers[ $l_idx + 2 ]->(); @_; }
-                        : sub { shift; @_; };
-                }
-                else {
-                    push @cb, $cb;
-                }
-            }
-
-            push @layers, sub {
-                return $c->app->xcached->[$idx]->cached(
-                    $key => @params,
-                    ( @rest, fn_key => 0 ),
-                    @cb
-                );
-            };
         }
-    }
-    else {
-        # Cache regular data: use only first level cache
-        @layers = (
-            sub {
-                return $c->app->xcached->[0]
-                    ->cached( $key, @arguments, @rest, ( $cb // () ) );
-            }
-        );
+
+        push @layers, sub {
+            return $c->app->xcached->[$idx]->cached(
+                $key => @params,
+                ( @rest, fn_key => 0 ),
+                @cb
+            );
+        };
     }
 
     if ($to_expire) {
@@ -260,8 +253,9 @@ To cache rendered templates includes
 =head1 CACHES CONFIG
 
 Caches config has to be provided on plugin loading. Config is ARRAY of HASHes.
-First element represents top level cache layer, last - bottom.
-   
+First element represents top level cache layer, last - bottom,
+so try to place the fastest cache to the top.
+
     [
         {
             driver         => 'MODULE',
@@ -301,8 +295,7 @@ B<1> means I<disable xcache>, B<0> means I<enable xcache>.
 
 Layered cache, accepts the same arguments as L<MojoX::Cached/cached>.
 
-Subroutine/method calls will be cached on all layers,
-but regular value will be cached only on first cache level.
+Will cache data at all layers, and get from top available layer.
 
 =head1 xcinclude
 
