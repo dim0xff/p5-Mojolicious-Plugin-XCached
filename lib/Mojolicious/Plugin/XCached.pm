@@ -127,7 +127,6 @@ sub _xcache {
                     ( $method // () ), @arguments,
                 );
             }
-            push @params, ( @rest, fn_key => 0 );
 
             if ($cb) {
                 if ($idx) {
