@@ -69,13 +69,12 @@ sub _xcache {
         $method = shift;
     }
 
-    # Data to be cached
     my @arguments = shift @_ if @_;
-    my @rest = @_;
+    my $cb        = pop @_   if ref $_[-1] eq 'CODE';
+    my @rest      = @_;
 
     # No XCached
     if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
-        my $cb = pop @rest if ref $rest[-1] eq 'CODE';
 
         # Return nothing if it is "get" for general data
         return unless @arguments;
@@ -98,61 +97,82 @@ sub _xcache {
         }
     }
 
-    # Create chain of caches (from lower to top)
-    my @chain;
+    # Expire?
+    my $to_expire = ( {@rest}->{expire_in} // 1 ) <= 0;
+
+    # Layers of caches (direction: bottom-top)
+    my @layers;
 
     # Cache method/sub call
     if ( $sub || $method ) {
-        my $cb = pop @rest if ref $rest[-1] eq 'CODE';
+        my $key = $c->app->xcached->[0]->get_cache_key(
+            $key, wantarray,
+            ( $sub    // () ),
+            ( $obj    // () ),
+            ( $method // () ),
+            @arguments, @rest, ( $cb // () )
+        );
 
+        # Note about direction: 0 - lower layer
         for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
-            if (@chain) {
-                my $chain_idx = $#chain;
-                push @chain, sub {
-                    return $c->app->xcached->[$idx]->cached(
-                        "L$idx" => $chain[$chain_idx],
-                        [ $key, ( $method // () ), $arguments[0] ],
-                        @rest,
-                        (
-                              $cb
-                            ? $idx
-                                    ? sub { shift; @_; }
-                                    : $cb
-                            : ()
-                        )
-                    );
-                };
+            my ( $l_idx, @params, @cb ) = ($#layers);
+
+            if (@layers) {
+                @params = ( $layers[$l_idx], [], );
             }
             else {
-                push @chain, sub {
-                    return $c->app->xcached->[$idx]->cached(
-                        $key,
-                        ( $sub    // () ),
-                        ( $obj    // () ),
-                        ( $method // () ),
-                        @arguments,
-                        @rest,
-                        (
-                            $cb
-                            ? sub { shift; @_; }
-                            : ()
-                        )
-                    );
-                };
+                @params = (
+                    ( $sub    // () ),
+                    ( $obj    // () ),
+                    ( $method // () ), @arguments,
+                );
             }
+            push @params, ( @rest, fn_key => 0 );
+
+            if ($cb) {
+                if ($idx) {
+                    push @cb,
+                        $to_expire
+                        ? sub { shift; $layers[ $l_idx + 2 ]->(); @_; }
+                        : sub { shift; @_; };
+                }
+                else {
+                    push @cb, $cb;
+                }
+            }
+
+            push @layers, sub {
+                return $c->app->xcached->[$idx]->cached(
+                    $key => @params,
+                    ( @rest, fn_key => 0 ),
+                    @cb
+                );
+            };
         }
     }
     else {
         # Cache regular data: use only first level cache
-        @chain = (
+        @layers = (
             sub {
-                return $c->app->xcached->[0]->cached( $key, @arguments, @rest );
+                return $c->app->xcached->[0]
+                    ->cached( $key, @arguments, @rest, ( $cb // () ) );
             }
         );
     }
 
-    return $chain[-1]->();
+    if ($to_expire) {
+        if ($cb) {
+            return $layers[0]->();
+        }
+        else {
+            $_->() for @layers;
+        }
+    }
+    else {
+        return $layers[-1]->();
+    }
 }
+
 
 # Cached include
 sub _xcinclude {
