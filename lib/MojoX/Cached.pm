@@ -509,7 +509,7 @@ Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
     # Get
     cached($key, \&cb?)
 
-    # Set (or expire if $expire_in == 0)
+    # Get if cached, or set, or expire if $expire_in == 0
     cached($key, $data, $expire_in?, \&cb?)
 
     # cached_sub
