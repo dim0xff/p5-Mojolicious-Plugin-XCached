@@ -69,9 +69,10 @@ sub _xcache {
         $method = shift;
     }
 
-    my @arguments = shift @_ if @_;
-    my $cb        = pop @_   if ref $_[-1] eq 'CODE';
-    my @rest      = @_;
+    my ( @arguments, $cb, @rest );
+    @arguments = shift @_ if @_;
+    $cb        = pop @_   if ref $_[-1] eq 'CODE';
+    @rest      = @_;
 
     # No XCached
     if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
@@ -97,6 +98,7 @@ sub _xcache {
         }
     }
 
+    my $in_scalar;
     $key = $c->app->xcached->[0]->get_cache_key(
         $key, wantarray,
         ( $sub    // () ),
@@ -107,8 +109,9 @@ sub _xcache {
 
     # Cache for regular data: change it to subroutine call
     if ( !$sub && !$method ) {
-        $sub = sub {@_};
-        @rest = ( expire_in => shift @rest ) if @rest;
+        $in_scalar = 1;
+        $sub       = sub { shift @_ };
+        @rest      = ( expire_in => shift @rest ) if @rest;
         @arguments = ( [@arguments] );
     }
 
@@ -144,11 +147,20 @@ sub _xcache {
         }
 
         push @layers, sub {
-            return $c->app->xcached->[$idx]->cached(
-                $key => @params,
-                ( @rest, fn_key => 0 ),
-                @cb
-            );
+            if ($in_scalar) {
+                return scalar $c->app->xcached->[$idx]->cached(
+                    $key => @params,
+                    ( @rest, fn_key => 0 ),
+                    @cb
+                );
+            }
+            else {
+                return $c->app->xcached->[$idx]->cached(
+                    $key => @params,
+                    ( @rest, fn_key => 0 ),
+                    @cb
+                );
+            }
         };
     }
 
