@@ -1,6 +1,6 @@
 package MojoX::Cached;
 
-# ABSTRACT: Simple cache which supports data caching, sub/method call results caching.
+# ABSTRACT: Simple cache which supports data caching, sub/method call results caching
 
 use Mojo::Base -base;
 
@@ -335,7 +335,7 @@ __END__
     # Perform (in scalar context):
     #   $template->render( ... some template data ... )
     #   and cache result
-    my $rendered = $cacher->cacher(
+    my $rendered = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
         3600
@@ -344,14 +344,14 @@ __END__
     # The same, but in list context
     # Results will be stored separately (means, that method will be called again
     # in list context)
-    ($rendered) = $cacher->cacher(
+    ($rendered) = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
         3600
     );
 
     # Later when on call method with same arguments, result will be fetched from
-    # cache (if not expired) respect call context
+    # cache (if not expired) respecting call context
 
 =head1 DESCRIPTION
 

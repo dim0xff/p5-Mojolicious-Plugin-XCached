@@ -1,6 +1,6 @@
 package Mojolicious::Plugin::XCached;
 
-# ABSTRACT: Cache plugin
+# ABSTRACT: Cache layers plugin
 
 use Mojo::Base 'Mojolicious::Plugin';
 
@@ -210,26 +210,44 @@ __END__
     sub action {
         my $c = shift;
 
-        my $user = $c->xcached('user');
+        my $user = $c->xcache('user');
         if (!$user) {
             $user = $user_model->load_user( id => $c->param('user_id') );
-            $c->xcached( user => $user, 3600 );
+            $c->xcache( user => $user, 3600 );
         }
 
         $c->render( user => $user );
     }
 
-    # ... or even like this
+    # ... or like this
     sub action {
         my $c = shift;
 
-        my $user = $c->xcached(
+        my $user = $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
             3600
         );
 
         $c->render( user => $user );
+    }
+
+    # ... ir even like this
+    sub action {
+        my $c = shift;
+
+        $c->render_later;
+
+        $c->xcache(
+            user => $user_model => load_user =>
+            [ id => $c->param('user_id') ],
+            3600,
+            sub {
+                my ( $xcache, $user ) = @_;
+
+                $c->render( user => $user );
+            }
+        );
     }
 
 
@@ -251,9 +269,13 @@ Plugin adds two helpers:
 
 =over
 
-=item L</xcached>
+=item L</xcache>
 
 To use caches inside application and/or templates
+
+=item L</xcaches>
+
+Returns count of cache layers
 
 =item L</xcinclude>
 
