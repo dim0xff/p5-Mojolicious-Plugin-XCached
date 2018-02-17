@@ -38,7 +38,7 @@ Cache layers plugin
         $c->render( user => $user );
     }
 
-    # ... ir even like this
+    # ... or even like this
     sub action {
         my $c = shift;
 
