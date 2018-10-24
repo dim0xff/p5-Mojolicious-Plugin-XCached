@@ -6,6 +6,7 @@ use Mojo::Base 'Mojolicious::Plugin';
 
 use Mojo::Loader qw(load_class);
 use Scalar::Util qw(blessed);
+use Storable qw(dclone);
 
 use MojoX::Cached;
 
@@ -34,7 +35,7 @@ sub register {
 
         # Create XCached object
         my $idx    = $cache_index;
-        my %config = %{$cfg};
+        my %config = %{ dclone $cfg};
 
         $config{driver} = $module->new( delete $config{driver_options} // () );
         $config{name} //= "Cache:L$idx";
@@ -70,7 +71,7 @@ sub _xcache {
     }
 
     my ( @arguments, $cb, @rest );
-    @arguments = shift @_ if @_;
+    @arguments = shift @_ if @_ && ref $_[0] eq 'ARRAY';
     $cb        = pop @_   if ref $_[-1] eq 'CODE';
     @rest      = @_;
 
@@ -99,6 +100,7 @@ sub _xcache {
     }
 
     my $in_scalar;
+
     $key = $c->app->xcached->[0]->get_cache_key(
         $key, wantarray,
         ( $sub    // () ),
@@ -187,11 +189,13 @@ sub _xcinclude {
 
     my ( $template, %args ) = ( @_ % 2 ? shift : undef, @_ );
 
+    my $xcache_key    = delete $args{xcache_key};
     my $cache_options = delete $args{xcached};
     $cache_options = [] unless ref $cache_options eq 'ARRAY';
 
     return $c->xcache(
-        '$c->helpers' => $c->helpers => include => [ $template, %args ],
+        ( $xcache_key // '$c->helpers' ) => $c->helpers => include =>
+            [ $template, %args ],
         @{$cache_options}
     );
 }
@@ -232,7 +236,7 @@ __END__
         $c->render( user => $user );
     }
 
-    # ... ir even like this
+    # ... or even like this, if driver is non-blocking
     sub action {
         my $c = shift;
 
@@ -252,7 +256,7 @@ __END__
 
 
     # In your template
-    %= xcinclude( 'common/user/info', $user );
+    %= xcinclude( 'common/user/info', user => $current_user, xcache => [ fn_key => 0 ],  xcache_key => 'current_user' );
 
     # @common/user/info.html.ep
     % for $object ( $user->related_objects ) {
@@ -314,10 +318,13 @@ B<driver_options> will be passed to driver constructor (C<new>)
 
     # these options
     driver         => 'Mojo',
-    driver_options => { max_keys => 50 },
+    driver_options => { expire_in => 3600, driver => { max_keys => 50 } },
 
     # will be used as
-    MojoX::Cached::Driver::Mojo->new( { max_keys => 50 } )
+    MojoX::Cached::Driver::Mojo->new( {
+        expire_in => 3600,
+        driver    => { max_keys => 50 }
+    } );
 
 
 =head1 HELPERS
@@ -333,5 +340,10 @@ Will cache data at all layers, and get from top available layer.
 
 =head1 xcinclude
 
-Cache rendered template, render if needed. Accepts the same arguments
+Cache rendered template, render if needed. In addition to C<xcached>
+and C<xcache_key> arguments, it accepts the same arguments
 as L<Mojolicious::Plugin::DefaultHelpers/include>.
+
+C<xcached> parameter must be C<ARRAY>. It will be dereferenced
+and passed to L</xcache>.
+C<xcache_key> will be used as cache C<key> (instead of default C<$c-E<gt>helpers>).
