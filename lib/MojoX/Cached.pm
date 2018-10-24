@@ -42,7 +42,8 @@ sub get {
 }
 
 sub set {
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
 
     my ( $self, $key, $data, $expire_in ) = @_;
 
@@ -77,7 +78,8 @@ sub expire {
 }
 
 sub cached {
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
 
     my ( $self, $key ) = ( shift, shift );
 
@@ -128,7 +130,8 @@ sub cached {
 }
 
 sub cached_sub {
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
 
     my ( $self, $key ) = ( shift, shift );
 
@@ -202,7 +205,8 @@ sub cached_method {
 
     $key = $self->get_cache_key( $key, !!wantarray, @_ );
 
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
     my ( $obj, $method, $arguments, @opts ) = @_;
 
     return $self->cached_sub(
@@ -213,7 +217,8 @@ sub cached_method {
 }
 
 sub get_cache_key {
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
 
     my ( $self, $key, $wantarray ) = ( shift, shift, shift );
 
@@ -383,6 +388,7 @@ environment variable.
 =attr default_expire
 
 Default expiration time in seconds.
+
 Default is C<undef> (cache forever).
 
 
@@ -501,7 +507,6 @@ For C<%options> look L</cached_sub>.
         }
     );
 
-=method cached
 =method cached ($key, \&subroutine|($object, $method), \@arguments, \%options?, \&cb?)
 
 Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
