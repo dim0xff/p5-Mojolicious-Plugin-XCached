@@ -4,6 +4,8 @@ package MojoX::Cached::Driver;
 
 use Mojo::Base -base;
 
+has 'expire_in';
+
 sub get    {...}
 sub set    {...}
 sub expire {...}
@@ -21,6 +23,12 @@ Driver must support non-blocking interface, but non-blocking features
 are not required. All callbacks will get driver instance as first argument.
 
 Next methods have to be implemented:
+
+=attr expire_in
+
+Default expiration time in seconds for driver.
+
+Default is C<undef> (cache forever).
 
 
 =method get ($key, $cb?)

@@ -39,9 +39,11 @@ sub get {
 }
 
 sub set {
-    my $cb = pop if ref $_[-1] eq 'CODE';
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
     my ( $self, $key, $value, $expire_in ) = @_;
 
+    $expire_in //= $self->expire_in;
     my $data = {
         value     => $value,
         expire_at => $expire_in ? ( time + $expire_in ) : (undef),
