@@ -230,7 +230,7 @@ __END__
         my $user = $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            3600
+            ( expire_in => 3600 )
         );
 
         $c->render( user => $user );
@@ -245,7 +245,7 @@ __END__
         $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            3600,
+            ( expire_in => 3600 ),
             sub {
                 my ( $xcache, $user ) = @_;
 
@@ -256,7 +256,7 @@ __END__
 
 
     # In your template
-    %= xcinclude( 'common/user/info', user => $current_user, xcache => [ fn_key => 0 ],  xcache_key => 'current_user' );
+    %= xcinclude( 'common/user/info', user => $current_user, xcached => [ fn_key => 0 ],  xcache_key => 'current_user' );
 
     # @common/user/info.html.ep
     % for $object ( $user->related_objects ) {

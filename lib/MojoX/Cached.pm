@@ -15,8 +15,8 @@ use constant DEBUG => $ENV{MOJOX_CACHED_DEBUG};
 has 'default_expire';
 has 'driver'       => sub { MojoX::Cached::Driver::Mojo->new };
 has 'flatten_args' => sub { sub { shift->default_flatten_args(@_) } };
-has 'use_fn_key'   => 1;
 has 'name'         => 'XCached';
+has 'use_fn_key'   => 1;
 #>>>
 
 
@@ -343,7 +343,7 @@ __END__
     my $rendered = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        3600
+        expire_in => 3600
     );
 
     # The same, but in list context
@@ -352,7 +352,7 @@ __END__
     ($rendered) = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        3600
+        expire_in => 3600
     );
 
     # Later when on call method with same arguments, result will be fetched from
@@ -458,14 +458,14 @@ look L</get_cache_key> for other useful options).
     my $sub = sub {...};
 
     # Scalar context
-    # Perform equal to:
+    # Perform equals to:
     #   my $value = $sub->( ... arguments ... );
     my $value = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
 
     # List context
-    # Perform equal to:
+    # Perform equals to:
     #   my @values = $sub->( ... arguments ... );
-    my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ], ( expire_in => 3600 ) );
+    my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
 
     # With callback
     $cached->cached_method(
@@ -485,14 +485,14 @@ with respecting call context (LIST OR SCALAR).
 For C<%options> look L</cached_sub>.
 
     # Scalar context
-    # Perform equal to:
+    # Perform equals to:
     #   my $value = $object->some_method( ... arguments ... );
     my $value = $cached->cached_method(
             key => $object => some_method => [ ... arguments ...]
         );
 
     # List context
-    # Perform equal to:
+    # Perform equals to:
     #   my @values = $object->some_method( ... arguments ... );
     my @values = $cached->cached_method(
             key => $object => some_method => [ ... arguments ...]
@@ -501,6 +501,7 @@ For C<%options> look L</cached_sub>.
     # With callback
     $cached->cached_method(
         key => $object => $some_method => [ ... arguments ... ],
+        ( expire_in => 3600 ),
         sub {
             my ( $cached, @result ) = @_;
             # @result = $object->$some_method( ... arguments ... );
@@ -512,16 +513,16 @@ For C<%options> look L</cached_sub>.
 Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
 
     # Get
-    cached($key, \&cb?)
+    $cached->cached($key, \&cb?)
 
     # Get if cached, or set, or expire if $expire_in == 0
-    cached($key, $data, $expire_in?, \&cb?)
+    $cached->cached($key, $data, $expire_in?, \&cb?)
 
     # cached_sub
-    cached($key, \&subroutine, \@arguments, %options?, \&cb?)
+    $cached->cached($key, \&subroutine, \@arguments, %options?, \&cb?)
 
     # cached_method
-    cached($key, $object, $method, \@arguments, %options?, \&cb?)
+    $cached->cached($key, $object, $method, \@arguments, %options?, \&cb?)
 
 
 =method get_cache_key ($key, $wantarray, \&subroutine|($object, $method), \@arguments, \%options?, \&cb?)
