@@ -56,42 +56,51 @@ subtest 'get/set with expire_in' => sub {
 
     $driver->set(
         key => { data => 'data with expiration' },
-        1,
+        {
+            t         => $time,
+            expire_in => 1,
+        },
         sub {
             ok( @_, 'set' );
 
-            is($driver->get(
-                'key',
-                sub {
-                    my $driver = shift;
-                    my @data   = @_;
-                    is( ~~ @data, 1, 'get' );
-                    is_deeply(
-                        $data[0],
-                        {
-                            value     => { data => 'data with expiration' },
-                            expire_at => $time + 1,
-                        },
-                        '...data'
-                    );
+            is(
+                $driver->get(
+                    'key',
+                    sub {
+                        my $driver = shift;
+                        my @data   = @_;
+                        is( ~~ @data, 1, 'get' );
+                        is_deeply(
+                            $data[0],
+                            {
+                                value => { data => 'data with expiration' },
+                                expire_at => $time + 1,
+                            },
+                            '...data'
+                        );
 
-                    note 'sleep...';
-                    sleep(2);
+                        is(
+                            $driver->get(
+                                'key',
+                                { t => $time + 2 },
+                                sub {
+                                    shift;
+                                    my @data = @_;
+                                    is( ~~ @data, 0, 'expired' );
 
-                    is($driver->get(
-                        'key',
-                        sub {
-                            shift;
-                            my @data = @_;
-                            is( ~~ @data, 0, 'expired' );
+                                    return 'OK';
+                                }
+                            ),
+                            'OK',
+                            '->get OK'
+                        );
 
-                            return 'OK';
-                        }
-                    ), 'OK', '->get OK');
-
-                    return 'OK';
-                }
-            ), 'OK', '->get OK');
+                        return 'OK';
+                    }
+                ),
+                'OK',
+                '->get OK'
+            );
         }
     );
 };

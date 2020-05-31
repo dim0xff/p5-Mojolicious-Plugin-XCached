@@ -19,13 +19,19 @@ sub new {
 }
 
 sub get {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+
+    my ( $self, $key, $opts ) = @_;
 
     my $data = $self->_instance->get($key)
         or return $cb ? $cb->($self) : ();
 
-    # Expired
-    if ( $data->{expire_at} && $data->{expire_at} < time ) {
+    $opts //= {};
+    my $t = $opts->{t} // time;
+
+    # If expired
+    if ( $data->{expire_at} && $data->{expire_at} < $t ) {
         if ($cb) {
             return $self->expire( $key, sub { $cb->($self) } );
         }
@@ -41,12 +47,15 @@ sub get {
 sub set {
     my $cb;
     $cb = pop if ref $_[-1] eq 'CODE';
-    my ( $self, $key, $value, $expire_in ) = @_;
+    my ( $self, $key, $value, $opts ) = @_;
 
-    $expire_in //= $self->expire_in;
+    $opts //= {};
+    my $expire_in = $opts->{expire_in} // $self->expire_in;
+    my $t         = $opts->{t}         // time;
+
     my $data = {
         value     => $value,
-        expire_at => $expire_in ? ( time + $expire_in ) : (undef),
+        expire_at => $expire_in ? ( $t + $expire_in ) : (undef),
     };
 
     $self->_instance->set( $key, $data );

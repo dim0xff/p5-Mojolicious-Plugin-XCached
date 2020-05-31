@@ -26,7 +26,16 @@ subtest 'get/set' => sub {
 
 subtest 'get/set with expire_in' => sub {
     my $time = time;
-    ok( $driver->set( key => { data => 'data with expiration' }, 1 ), 'set' );
+    ok(
+        $driver->set(
+            key => { data => 'data with expiration' },
+            {
+                t         => $time,
+                expire_in => 1,
+            }
+        ),
+        'set'
+    );
     my @data = $driver->get('key');
     is( ~~ @data, 1, 'get' );
     is_deeply(
@@ -38,9 +47,7 @@ subtest 'get/set with expire_in' => sub {
         '...data'
     );
 
-    note 'sleep...';
-    sleep(2);
-    @data = $driver->get('key');
+    @data = $driver->get( 'key', { t => $time + 2 } );
     is( ~~ @data, 0, 'expired' );
 };
 
