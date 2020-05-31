@@ -13,8 +13,6 @@ sub index {
         ),
         sub {
             my ( undef, $t ) = @_;
-    
-
             $c->render(
                 t  => $t,
                 rt => $c->param('t'),

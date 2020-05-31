@@ -443,7 +443,7 @@ Default is C<1> (true).
 
 Get cached data by C<$key>
 
-If C<\%opts> is provided it will be passed to driver call. 
+If C<\%opts> is provided it will be passed to driver call.
 
 
 =method set ($key, $data, \%opts?, \&cb?)
@@ -451,12 +451,11 @@ If C<\%opts> is provided it will be passed to driver call.
 Cache C<$data> by C<$key>.
 
 If C<\%opts> is provided it will be merged with default values and passed
-to driver call. 
+to driver call.
 
-Default C<\%opts> values is
+Default C<\%opts> values are
 
     expire_in - default to L</default_expire>
-
 
 =method expire ($key)
 
@@ -510,13 +509,13 @@ useful options).
         }
     );
 
-    # With callback and with provided hash key 'some_key' 
+    # With callback and with provided hash key 'some_key'
     # Will be expired in 3000 seconds from now (or in 3600 seconds from time-600)
     $cached->cached_method(
         some_key => $sub => [ ... arguments ... ],
         (
-            cache  => { expire_in => 3600, t => time - 600, }, 
-            fn_key => 0, 
+            cache  => { expire_in => 3600, t => time - 600, },
+            fn_key => 0,
         ),
         sub {
             my ( $cached, @result ) = @_;
