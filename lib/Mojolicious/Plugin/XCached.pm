@@ -216,15 +216,52 @@ sub _xcinclude {
 
     my ( $template, %args ) = ( @_ % 2 ? shift : undef, @_ );
 
-    my $xcache_key    = delete $args{xcache_key};
-    my $cache_options = delete $args{xcached};
-    $cache_options = [] unless ref $cache_options eq 'ARRAY';
 
-    return $c->xcache(
-        ( $xcache_key // '$c->helpers' ) => $c->helpers => include =>
-            [ $template, %args ],
-        @{$cache_options}
-    );
+    my $xcache_key    = delete $args{xcache_key};
+    my $content_for   = delete $args{xcache_content_for};
+    my $content_with  = delete $args{xcache_content_with};
+    my $cache_options = delete $args{xcached};
+
+    for ( $cache_options, $content_for, $content_with ) {
+        $_ = [] unless ref $_ eq 'ARRAY';
+    }
+
+    my $content = {};
+    my $result  = '';
+    do {
+        my @c_keys = uniq @{$content_for}, @{$content_with};
+
+        local @{ $c->stash->{'mojo.content'} }{@c_keys};
+        local @{ $c->stash->{'mojo.content'} }{@c_keys};
+
+        my $key = $xcache_key // '$c->helpers';
+
+        $result = $c->xcache(
+            $key => $c->helpers => include => [ $template, %args ],
+            @{$cache_options}
+        );
+
+        $content = $c->xcache(
+            "$key:mojo.content" => sub {
+                my %content;
+                @content{@c_keys} = @{ $c->stash->{'mojo.content'} }{@c_keys};
+                return \%content;
+                } => [ $template, %args ],
+            @{$cache_options}
+        );
+    };
+
+    for my $k ( uniq @{$content_for} ) {
+        next unless defined $content->{$k};
+        $c->stash->{'mojo.content'}{$k} .= $content->{$k};
+    }
+
+    for my $k ( uniq @{$content_with} ) {
+        next unless defined $content->{$k};
+        $c->stash->{'mojo.content'}{$k} = $content->{$k};
+    }
+
+    return $result;
 }
 
 1;
