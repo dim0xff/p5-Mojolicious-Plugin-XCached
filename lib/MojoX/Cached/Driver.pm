@@ -31,12 +31,16 @@ Default expiration time in seconds for driver.
 Default is C<undef> (cache forever).
 
 
-=method get ($key, $cb?)
+=method get ($key, \%opts?, $cb?)
 
 Get cached value by C<$key>.
+Optional driver options C<\%opts> could be passed.
 Optional callback C<$cb> could be added for non-blocking C<get>.
 
-On success returns HASH:
+Driver MUST support key C<t> in C<\%opts> which represents current time.
+If there are no C<t> key, then current time (via C<time()> will be used).
+
+On success returns C<\%result>:
 
     {
         value     => ..., # cached data
@@ -52,21 +56,27 @@ If callback is provided, then returns data from callback call.
 Callback will be called as:
 
     # On success
-    $cb->( $driver, $HASH )
+    $cb->( $driver, \%result )
 
     # On fail
     $cb->( $driver )
 
 
-=method set ($key, $data, $expire_in?, $cb?)
+=method set ($key, $data, \%opts?, $cb?)
 
 Cache C<$data> by C<$key>.
-Optional expiration in seconds could be set via C<$expire_in>.
+Optional driver options C<\%opts> could be passed.
+Optional callback C<$cb> could be added as last argument for
+non-blocking C<set>.
+
+Driver MUST support key C<t> in C<\%opts> which represents current time.
+If there are no C<t> key, then current time (via C<time()> will be used).
+
+Driver MUST support key C<expire_in> in C<\%opts> which represents
+expiration time in seconds (default L</expire_in>).
 
 On success returns like-L</get> HASH, otherwise returns nothing.
 
-Optional callback C<$cb> could be added as last argument for
-non-blocking C<set>.
 If callback is provided, then returns data from callback call.
 On success HASH will be passed as second argument to callback.
 

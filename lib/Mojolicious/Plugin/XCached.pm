@@ -5,6 +5,8 @@ package Mojolicious::Plugin::XCached;
 use Mojo::Base 'Mojolicious::Plugin';
 
 use Mojo::Loader qw(load_class);
+
+use List::Util qw(uniq);
 use Scalar::Util qw(blessed);
 use Storable qw(dclone);
 
@@ -63,17 +65,30 @@ sub _xcache {
 
     my ( $sub, $obj, $method );
     if ( ref $_[0] eq 'CODE' ) {
-        $sub = shift @_;
+        $sub = shift;
     }
-    elsif ( @_ > 1 && blessed( $_[0] ) && $_[0]->can( $_[1] ) ) {
+    elsif (@_ > 1
+        && blessed( $_[0] )
+        && defined $_[1]
+        && !ref( $_[1] )
+        && $_[0]->can( $_[1] ) )
+    {
         $obj    = shift @_;
-        $method = shift;
+        $method = shift @_;
     }
 
+
     my ( @arguments, $cb, @rest );
-    @arguments = shift @_ if @_ && ref $_[0] eq 'ARRAY';
-    $cb        = pop @_   if ref $_[-1] eq 'CODE';
-    @rest      = @_;
+    $cb = pop @_ if ref $_[-1] eq 'CODE';
+
+    if ( $sub || $method ) {
+        @arguments = shift @_ if ref $_[0] eq 'ARRAY';
+    }
+    else {
+        @arguments = shift @_ if @_;
+    }
+    @rest = @_;
+
 
     # No XCached
     if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
@@ -113,14 +128,26 @@ sub _xcache {
     if ( !$sub && !$method ) {
         $in_scalar = 1;
         $sub       = sub { shift @_ };
-        @rest      = ( expire_in => shift @rest ) if @rest;
+        @rest      = ( cache => shift @rest ) if ref $rest[0] eq 'HASH';
         @arguments = ( [@arguments] );
     }
 
     # Expire?
-    my $to_expire = ( {@rest}->{expire_in} // 1 ) <= 0;
+    my $to_expire = ( {@rest}->{cache}{expire_in} // 1 ) <= 0;
 
-    # Layers of caches (direction: bottom-top)
+
+    # Layers of caches (set direction: bottom-top)
+    # Layer calls start from top to bottom
+    #
+    # @layers contains subs which recursively calls:
+    # - 0 bottom has the lowest priority (and actually get original data when
+    # cache is expired )
+    # - 1 layer above bottom calls bottom layer for data when layer data is
+    # expired
+    # - when data in layer above [1] is expired it calls [1] layer, which could
+    # return cached data or call bottom [0] layer for data if data on [1] layer
+    # is expired
+    # - and so on
     my @layers;
     for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
         my ( $l_idx, @params, @cb ) = ($#layers);
@@ -189,15 +216,52 @@ sub _xcinclude {
 
     my ( $template, %args ) = ( @_ % 2 ? shift : undef, @_ );
 
-    my $xcache_key    = delete $args{xcache_key};
-    my $cache_options = delete $args{xcached};
-    $cache_options = [] unless ref $cache_options eq 'ARRAY';
 
-    return $c->xcache(
-        ( $xcache_key // '$c->helpers' ) => $c->helpers => include =>
-            [ $template, %args ],
-        @{$cache_options}
-    );
+    my $xcache_key    = delete $args{xcache_key};
+    my $content_for   = delete $args{xcache_content_for};
+    my $content_with  = delete $args{xcache_content_with};
+    my $cache_options = delete $args{xcached};
+
+    for ( $cache_options, $content_for, $content_with ) {
+        $_ = [] unless ref $_ eq 'ARRAY';
+    }
+
+    my $content = {};
+    my $result  = '';
+    do {
+        my @c_keys = uniq @{$content_for}, @{$content_with};
+
+        local @{ $c->stash->{'mojo.content'} }{@c_keys};
+        local @{ $c->stash->{'mojo.content'} }{@c_keys};
+
+        my $key = $xcache_key // '$c->helpers';
+
+        $result = $c->xcache(
+            $key => $c->helpers => include => [ $template, %args ],
+            @{$cache_options}
+        );
+
+        $content = $c->xcache(
+            "$key:mojo.content" => sub {
+                my %content;
+                @content{@c_keys} = @{ $c->stash->{'mojo.content'} }{@c_keys};
+                return \%content;
+                } => [ $template, %args ],
+            @{$cache_options}
+        );
+    };
+
+    for my $k ( uniq @{$content_for} ) {
+        next unless defined $content->{$k};
+        $c->stash->{'mojo.content'}{$k} .= $content->{$k};
+    }
+
+    for my $k ( uniq @{$content_with} ) {
+        next unless defined $content->{$k};
+        $c->stash->{'mojo.content'}{$k} = $content->{$k};
+    }
+
+    return $result;
 }
 
 1;
@@ -217,7 +281,7 @@ __END__
         my $user = $c->xcache('user');
         if (!$user) {
             $user = $user_model->load_user( id => $c->param('user_id') );
-            $c->xcache( user => $user, 3600 );
+            $c->xcache( user => $user, { expire_in => 3600 } );
         }
 
         $c->render( user => $user );
@@ -230,7 +294,9 @@ __END__
         my $user = $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            ( expire_in => 3600 )
+            (
+                cache => { expire_in => 3600 }
+            )
         );
 
         $c->render( user => $user );
@@ -245,7 +311,9 @@ __END__
         $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            ( expire_in => 3600 ),
+            (
+                cache => { expire_in => 3600 }
+            ),
             sub {
                 my ( $xcache, $user ) = @_;
 
@@ -256,9 +324,17 @@ __END__
 
 
     # In your template
-    %= xcinclude( 'common/user/info', user => $current_user, xcached => [ fn_key => 0 ],  xcache_key => 'current_user' );
+    <%= xcinclude(
+        'common/user/info',
+        user => $current_user,
+        xcached => [
+            cache => { expire_in => 60 }
+        ],
+        xcache_key => 'user:' . $current_user->id
+    ) %>
 
-    # @common/user/info.html.ep
+
+    # In @common/user/info.html.ep
     % for $object ( $user->related_objects ) {
         %= include( 'common/user/related_object' => $object );
     % }
@@ -340,10 +416,16 @@ Will cache data at all layers, and get from top available layer.
 
 =head1 xcinclude
 
-Cache rendered template, render if needed. In addition to C<xcached>
-and C<xcache_key> arguments, it accepts the same arguments
-as L<Mojolicious::Plugin::DefaultHelpers/include>.
+Cache rendered template, render if needed. In addition to C<xcached>,
+C<xcache_key>, C<xcache_content_for> and C<xcache_content_with> arguments,
+it accepts the same arguments as L<Mojolicious::Plugin::DefaultHelpers/include>.
 
-C<xcached> parameter must be C<ARRAY>. It will be dereferenced
+C<xcached> parameter MUST be C<arrayrefs>. It will be dereferenced
 and passed to L</xcache>.
 C<xcache_key> will be used as cache C<key> (instead of default C<$c-E<gt>helpers>).
+
+C<xcache_content_for> and C<xcache_content_with> MUST be C<arrayrefs> and contain
+names which will be used via L<Mojolicious::Plugin::DefaultHelpers/"content_for">
+and L<Mojolicious::Plugin::DefaultHelpers/"content_with">.
+You HAVE to provide and fill it if your cached template uses
+C<content_for> or/and C<content_with> inside.

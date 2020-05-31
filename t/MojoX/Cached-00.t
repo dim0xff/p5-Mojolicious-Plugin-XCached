@@ -64,10 +64,16 @@ ok(
 
 is( $cached->driver, $driver, 'driver ref' );
 
+my $t = time;
 my $key1 = { data => [ 1, 2, 3 ] };
 subtest set => sub {
-    ok( $cached->set( key1 => $key1, $default_expire * 2 ),
-        'set with default_expire * 2' );
+    ok(
+        $cached->set(
+            key1 => $key1,
+            { t => $t, expire_in => $default_expire * 2 }
+        ),
+        'set with default_expire * 2'
+    );
     ok( exists $driver->cache->{key1}, 'set key' );
     is_deeply( $driver->cache->{key1}{value}, $key1, 'cached data' );
     is(
@@ -146,14 +152,14 @@ subtest cached_method => sub {
         2, '2 keys in cache for one key name, 2 diff context' );
 
     $cached->cached_method(
-        o_3_2 => $obj => method => [ 3, 2 ],
-        ( expire_in => 0 )
+        o_3_2 => $obj        => method => [ 3, 2 ],
+        cache => { expire_in => 0 }
     );
     is( scalar( keys %{ $driver->cache } ), 1, '... key expired (scalar)' );
 
     () = $cached->cached_method(
-        o_3_2 => $obj => method => [ 3, 2 ],
-        ( expire_in => 0 )
+        o_3_2 => $obj        => method => [ 3, 2 ],
+        cache => { expire_in => 0 }
     );
     is( scalar( keys %{ $driver->cache } ), 0, '... key expired (list)' );
 };
@@ -163,10 +169,14 @@ subtest cached => sub {
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
     is( $cached->cached('default'), 'value', 'cached->get' );
-    is( $cached->cached( default => 'value', 0 ), !!1, 'cached->set (expire)' );
-    is( $cached->cached( default => 'value', 0 ), !!0, 'cached->set (expire)' );
+    is( $cached->cached( 'default', undef, { expire_in => 1 } ),
+        'value', 'cached->get with opts' );
+    is( $cached->cached( default => 'value', { expire_in => 0 } ),
+        !!1, 'cached->set (expire)' );
+    is( $cached->cached( default => 'value', { expire_in => 0 } ),
+        !!0, 'cached->set (expire)' );
     is_deeply( $driver->status,
-        [ 'get', 'set', 'get', 'get', 'expire', 'expire' ],
+        [ 'get', 'set', 'get', 'get', 'get', 'expire', 'expire' ],
         'set status' );
 
 
@@ -180,7 +190,10 @@ subtest cached => sub {
         [ 10, 'true' ],
         "list cached->subroutine / call $_"
     ) for ( 1 .. 5 );
-    $cached->cached( subroutine => \&subroutine => [5], ( expire_in => 0 ) );
+    $cached->cached(
+        subroutine => \&subroutine => [5],
+        cache      => { expire_in  => 0 }
+    );
     is_deeply(
         $driver->status,
         [ ( 'get', 'set', ('get') x 4 ) x 2, 'expire' ],
@@ -203,8 +216,8 @@ subtest cached => sub {
     is( $obj->{calls}, 2, 'only two method call' );
 
     $cached->cached_method(
-        o_3_2 => $obj => method => [ 3, 2 ],
-        ( expire_in => 0 )
+        o_3_2 => $obj        => method => [ 3, 2 ],
+        cache => { expire_in => 0 }
     );
 
     is_deeply(

@@ -21,14 +21,17 @@ has 'use_fn_key'   => 1;
 
 
 sub get {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+
+    my ( $self, $key, $opts ) = @_;
 
     warn "-- @{[$self->name]} ->get '$key'\n\n" if DEBUG;
 
     # Callback
     if ($cb) {
         return $self->driver->get(
-            $key,
+            $key, $opts,
             sub {
                 my ( undef, $data ) = @_;
                 return $cb->( $self, $data ? $data->{value} : () );
@@ -37,7 +40,7 @@ sub get {
     }
 
     # Default behaviour
-    my $cdata = $self->driver->get($key) or return;
+    my $cdata = $self->driver->get( $key, $opts ) or return;
     return $cdata->{value};
 }
 
@@ -45,17 +48,21 @@ sub set {
     my $cb;
     $cb = pop if ref $_[-1] eq 'CODE';
 
-    my ( $self, $key, $data, $expire_in ) = @_;
+    my ( $self, $key, $data, $opts ) = @_;
 
     warn "-- @{[$self->name]} ->set '$key'\n\n" if DEBUG;
 
-    $expire_in //= $self->default_expire;
+    my %merged_opts = (
+        expire_in => $self->default_expire,
+
+        %{ $opts // {} }
+    );
 
     # Callback
     if ($cb) {
         return $self->driver->set(
-            $key, $data,
-            $expire_in,
+            $key => $data,
+            \%merged_opts,
             sub {
                 my ( undef, $data ) = @_;
                 return $cb->( $self, $data ? $data->{value} : () );
@@ -64,7 +71,7 @@ sub set {
     }
 
     # Default behaviour
-    my $cdata = $self->driver->set( $key, $data, $expire_in ) or return;
+    my $cdata = $self->driver->set( $key, $data, \%merged_opts ) or return;
     return $cdata->{value};
 }
 
@@ -83,24 +90,32 @@ sub cached {
 
     my ( $self, $key ) = ( shift, shift );
 
-    # Get/Set
-    if (@_) {
-        if ( ref $_[0] eq 'CODE' ) {
+    # Get/Set/Expire
+    if ( @_ && defined $_[0] ) {
 
-            # Cached sub
+        # Cached sub
+        if ( ref $_[0] eq 'CODE' ) {
             return $self->cached_sub( $key, @_, ( $cb // () ) );
         }
-        elsif ( @_ > 1 && blessed( $_[0] ) && $_[0]->can( $_[1] ) ) {
 
-            # Cached method
+        # Cached method
+        elsif (@_ > 1
+            && blessed( $_[0] )
+            && defined $_[1]
+            && !ref( $_[1] )
+            && $_[0]->can( $_[1] ) )
+        {
             return $self->cached_method( $key, @_, ( $cb // () ) );
         }
+
+        # Regular data
         else {
-            # Regular data
-            my ( $data, $expire_in ) = @_;
+            my ( $data, $opts ) = @_;
+
+            $opts //= {};
 
             return $self->expire( $key, ( $cb // () ) )
-                if ( $expire_in // 1 ) <= 0;
+                if ( $opts->{expire_in} // 1 ) <= 0;
 
             my $next = sub {
                 my ( $self, @data ) = @_;
@@ -111,21 +126,22 @@ sub cached {
                 }
 
                 # Cache data
-                return $self->set( $key, $data, $expire_in, ( $cb // () ) );
+                return $self->set( $key, $data, $opts, ( $cb // () ) );
             };
 
             if ($cb) {
                 return $self->get( $key, $next );
             }
             else {
-                return $next->( $self, $self->get($key) );
+                return $next->( $self, $self->get( $key, $opts ) );
             }
         }
     }
 
     # Get
     else {
-        return $self->get( $key, ( $cb // () ) );
+        shift unless defined $_[0];
+        return $self->get( $key, @_, ( $cb // () ) );
     }
 }
 
@@ -137,18 +153,20 @@ sub cached_sub {
 
     warn "-- @{[$self->name]} ->cached_sub '$key'\n\n" if DEBUG;
 
-    my ( $sub, $arguments, %opts ) = @_;
-    $arguments //= [];
+    my ( $sub, $arguments, %rest ) = @_;
+    $arguments = [] unless ref $arguments eq 'ARRAY';
 
     # Respect context
     my $is_list_context = $cb ? 1 : !!wantarray;
 
-    $key = $self->get_cache_key( $key, !!wantarray, $sub, $arguments, %opts,
+    $key = $self->get_cache_key( $key, !!wantarray, $sub, $arguments, %rest,
         ( $cb // () ) );
+
+    my $opts = $rest{cache} || {};
 
     # Expiration
     return $self->expire( $key, ( $cb // () ) )
-        if ( $opts{expire_in} // 1 ) <= 0;
+        if ( $opts->{expire_in} // 1 ) <= 0;
 
     my $next = sub {
         my ( $self, @data ) = @_;
@@ -167,34 +185,39 @@ sub cached_sub {
         # Not found. Cache it!
         if ($is_list_context) {
             @data = $sub->( @{$arguments} );
-            $self->set(
-                $key => \@data,
-                $opts{expire_in},
-                (
-                    $cb
-                    ? sub {
-                        my ( $self, $data ) = @_;
-                        $cb->( $self, @{$data} );
-                    }
-                    : ()
-                )
-            );
+
+            if ( @data > 1 || defined $data[0] ) {
+                $self->set(
+                    $key => \@data,
+                    $opts,
+                    (
+                        $cb
+                        ? sub {
+                            my ( $self, $data ) = @_;
+                            $cb->( $self, @{$data} );
+                        }
+                        : ()
+                    )
+                );
+            }
 
             return @data;
         }
         else {
             my $data = $sub->( @{$arguments} );
-            $self->set( $key => $data, $opts{expire_in}, ( $cb // () ) );
+            if ( defined $data ) {
+                $self->set( $key => $data, $opts, ( $cb // () ) );
+            }
 
             return $data;
         }
     };
 
     if ($cb) {
-        return $self->get( $key, $next );
+        return $self->get( $key, $opts, $next );
     }
     else {
-        return $next->( $self, $self->get($key) );
+        return $next->( $self, $self->get($key, $opts) );
     }
 }
 
@@ -416,15 +439,23 @@ to generate cache key for subroutine/method call.
 Default is C<1> (true).
 
 
-=method get ($key, \&cb?)
+=method get ($key, \%opts?, \&cb?)
 
 Get cached data by C<$key>
 
+If C<\%opts> is provided it will be passed to driver call. 
 
-=method set ($key, $data, $expire_in?, \&cb?)
+
+=method set ($key, $data, \%opts?, \&cb?)
 
 Cache C<$data> by C<$key>.
-In addition expiration could be set via C<$expire_in> (default L</default_expire>).
+
+If C<\%opts> is provided it will be merged with default values and passed
+to driver call. 
+
+Default C<\%opts> values is
+
+    expire_in - default to L</default_expire>
 
 
 =method expire ($key)
@@ -442,35 +473,51 @@ Available C<options>:
 
 =over
 
-=item expire_in
+=item cache
 
-Type: B<number>
+Type: hashref
 
-Key expiration could be set via option C<expire_in> (default L</default_expire>).
-Negative means "expire key".
+Optional driver options. If it has key C<expire_in> with zero or negative value
+it means L<expiration|/expire> instead of caching.
 
 =back
 
+
 Cache key will be generated via L</get_cache_key>,
-(where C<%options> will be passed as is,
-look L</get_cache_key> for other useful options).
+(where C<%options> will be passed as is, look L</get_cache_key> for other
+useful options).
 
     my $sub = sub {...};
 
-    # Scalar context
+    # SCALAR context
     # Perform equals to:
     #   my $value = $sub->( ... arguments ... );
     my $value = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
 
-    # List context
+    # LIST context
     # Perform equals to:
     #   my @values = $sub->( ... arguments ... );
     my @values = $cached->cached_sub( key => $sub, [ ... arguments ... ] );
 
     # With callback
+    # Will be expired in 3600 seconds
     $cached->cached_method(
         key => $sub => [ ... arguments ... ],
-        ( expire_in => 3600 ),
+        ( cache => { expire_in => 3600 } ),
+        sub {
+            my ( $cached, @result ) = @_;
+            # @result = $sub->( ... arguments ... );
+        }
+    );
+
+    # With callback and with provided hash key 'some_key' 
+    # Will be expired in 3000 seconds from now (or in 3600 seconds from time-600)
+    $cached->cached_method(
+        some_key => $sub => [ ... arguments ... ],
+        (
+            cache  => { expire_in => 3600, t => time - 600, }, 
+            fn_key => 0, 
+        ),
         sub {
             my ( $cached, @result ) = @_;
             # @result = $sub->( ... arguments ... );
@@ -482,7 +529,8 @@ look L</get_cache_key> for other useful options).
 
 Cache data (by C<$key>) returned from C<$object-E<gt>$method(@arguments)> call
 with respecting call context (LIST OR SCALAR).
-For C<%options> look L</cached_sub>.
+
+It is wrapper over L</cached_sub>, so for C<%options> look L</cached_sub>.
 
     # Scalar context
     # Perform equals to:
@@ -508,15 +556,21 @@ For C<%options> look L</cached_sub>.
         }
     );
 
-=method cached ($key, \&subroutine|($object, $method), \@arguments, \%options?, \&cb?)
 
-Alias for C<get>, C<set>, C<cached_sub> and C<cached_method>.
+=method cached ($key, ($data?, \%opts?) | ( \&subroutine|($object, $method), \@arguments, %options? ), \&cb?)
 
-    # Get
-    $cached->cached($key, \&cb?)
+Shorthand for for L</get>, L</set>, L</cached_sub> and L</cached_method>
+and its expiration.
 
-    # Get if cached, or set, or expire if $expire_in == 0
-    $cached->cached($key, $data, $expire_in?, \&cb?)
+    # ->get
+    $cached->cached($key, \&cb?) # without driver options
+    $cached->cached($key, undef, \%opts?, \&cb?) # with driver options
+
+    # ->get if cached, or ->set (or even ->expire)
+    $cached->cached($key, $data, \&cb?) # get/set without options
+    $cached->cached($key, $data, \%opts?, \&cb?) # get/set with options
+    $cached->cached($key, $data, {expire_in => 0}, \&cb?) # expire
+
 
     # cached_sub
     $cached->cached($key, \&subroutine, \@arguments, %options?, \&cb?)
@@ -559,7 +613,8 @@ Generate cache key for C<$key> and @arguments via C<flatten_args>
 =method default_flatten_args ($arguments?, $prepend?, $key?)
 
 C<$arguments> could be HASH, ARRAY, blessed value with C<to_string> method,
-other types will be supposed to be SCALAR.
+other types will be supposed to be SCALAR
+(which will be stringified like C<'' . $arguments>).
 If it is blessed and can C<to_string>, then C<to_string> will be used to
 stringify C<$arguments>.
 
@@ -571,14 +626,14 @@ Make string from C<$arguments>
     # ... and Object doesn't
     my $obj = Object->new;
 
-    # User(id=42)
-    say $user->to_string;
+    # Then
+    say $user->to_string; # User(id=42)
+    say "$obj";           # Object=HASH(0xfc75d8)
 
-    # Object=HASH(0xfc75d8)
-    say "$obj";
-
+    # And finally
+    #
     # [1,[a,b],{c=>[3,2,1],d=>e},User(id=42),Object=HASH(0xfc75d8)]
-    say flatten_args(
+    say $cached->flatten_args(
             [
                 1,
                 [
