@@ -185,34 +185,39 @@ sub cached_sub {
         # Not found. Cache it!
         if ($is_list_context) {
             @data = $sub->( @{$arguments} );
-            $self->set(
-                $key => \@data,
-                $opts,
-                (
-                    $cb
-                    ? sub {
-                        my ( $self, $data ) = @_;
-                        $cb->( $self, @{$data} );
-                    }
-                    : ()
-                )
-            );
+
+            if ( @data > 1 || defined $data[0] ) {
+                $self->set(
+                    $key => \@data,
+                    $opts,
+                    (
+                        $cb
+                        ? sub {
+                            my ( $self, $data ) = @_;
+                            $cb->( $self, @{$data} );
+                        }
+                        : ()
+                    )
+                );
+            }
 
             return @data;
         }
         else {
             my $data = $sub->( @{$arguments} );
-            $self->set( $key => $data, $opts, ( $cb // () ) );
+            if ( defined $data ) {
+                $self->set( $key => $data, $opts, ( $cb // () ) );
+            }
 
             return $data;
         }
     };
 
     if ($cb) {
-        return $self->get( $key, $next );
+        return $self->get( $key, $opts, $next );
     }
     else {
-        return $next->( $self, $self->get($key) );
+        return $next->( $self, $self->get($key, $opts) );
     }
 }
 
