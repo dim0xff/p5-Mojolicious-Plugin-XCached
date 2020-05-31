@@ -281,7 +281,7 @@ __END__
         my $user = $c->xcache('user');
         if (!$user) {
             $user = $user_model->load_user( id => $c->param('user_id') );
-            $c->xcache( user => $user, 3600 );
+            $c->xcache( user => $user, { expire_in => 3600 } );
         }
 
         $c->render( user => $user );
@@ -294,7 +294,9 @@ __END__
         my $user = $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            ( expire_in => 3600 )
+            (
+                cache => { expire_in => 3600 }
+            )
         );
 
         $c->render( user => $user );
@@ -309,7 +311,9 @@ __END__
         $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            ( expire_in => 3600 ),
+            (
+                cache => { expire_in => 3600 }
+            ),
             sub {
                 my ( $xcache, $user ) = @_;
 
@@ -320,9 +324,17 @@ __END__
 
 
     # In your template
-    %= xcinclude( 'common/user/info', user => $current_user, xcached => [ fn_key => 0 ],  xcache_key => 'current_user' );
+    <%= xcinclude(
+        'common/user/info',
+        user => $current_user,
+        xcached => [
+            cache => { expire_in => 60 }
+        ],
+        xcache_key => 'user:' . $current_user->id
+    ) %>
 
-    # @common/user/info.html.ep
+
+    # In @common/user/info.html.ep
     % for $object ( $user->related_objects ) {
         %= include( 'common/user/related_object' => $object );
     % }
@@ -404,10 +416,16 @@ Will cache data at all layers, and get from top available layer.
 
 =head1 xcinclude
 
-Cache rendered template, render if needed. In addition to C<xcached>
-and C<xcache_key> arguments, it accepts the same arguments
-as L<Mojolicious::Plugin::DefaultHelpers/include>.
+Cache rendered template, render if needed. In addition to C<xcached>,
+C<xcache_key>, C<xcache_content_for> and C<xcache_content_with> arguments,
+it accepts the same arguments as L<Mojolicious::Plugin::DefaultHelpers/include>.
 
-C<xcached> parameter must be C<ARRAY>. It will be dereferenced
+C<xcached> parameter MUST be C<arrayrefs>. It will be dereferenced
 and passed to L</xcache>.
 C<xcache_key> will be used as cache C<key> (instead of default C<$c-E<gt>helpers>).
+
+C<xcache_content_for> and C<xcache_content_with> MUST be C<arrayrefs> and contain
+names which will be used via L<Mojolicious::Plugin::DefaultHelpers/"content_for">
+and L<Mojolicious::Plugin::DefaultHelpers/"content_with">.
+You HAVE to provide and fill it if your cached template uses
+C<content_for> or/and C<content_with> inside.
