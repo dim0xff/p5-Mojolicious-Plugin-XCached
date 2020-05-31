@@ -5,6 +5,8 @@ package Mojolicious::Plugin::XCached;
 use Mojo::Base 'Mojolicious::Plugin';
 
 use Mojo::Loader qw(load_class);
+
+use List::Util qw(uniq);
 use Scalar::Util qw(blessed);
 use Storable qw(dclone);
 
@@ -63,17 +65,30 @@ sub _xcache {
 
     my ( $sub, $obj, $method );
     if ( ref $_[0] eq 'CODE' ) {
-        $sub = shift @_;
+        $sub = shift;
     }
-    elsif ( @_ > 1 && blessed( $_[0] ) && $_[0]->can( $_[1] ) ) {
+    elsif (@_ > 1
+        && blessed( $_[0] )
+        && defined $_[1]
+        && !ref( $_[1] )
+        && $_[0]->can( $_[1] ) )
+    {
         $obj    = shift @_;
-        $method = shift;
+        $method = shift @_;
     }
 
+
     my ( @arguments, $cb, @rest );
-    @arguments = shift @_ if @_ && ref $_[0] eq 'ARRAY';
-    $cb        = pop @_   if ref $_[-1] eq 'CODE';
-    @rest      = @_;
+    $cb = pop @_ if ref $_[-1] eq 'CODE';
+
+    if ( $sub || $method ) {
+        @arguments = shift @_ if ref $_[0] eq 'ARRAY';
+    }
+    else {
+        @arguments = shift @_ if @_;
+    }
+    @rest = @_;
+
 
     # No XCached
     if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
@@ -113,14 +128,26 @@ sub _xcache {
     if ( !$sub && !$method ) {
         $in_scalar = 1;
         $sub       = sub { shift @_ };
-        @rest      = ( expire_in => shift @rest ) if @rest;
+        @rest      = ( cache => shift @rest ) if ref $rest[0] eq 'HASH';
         @arguments = ( [@arguments] );
     }
 
     # Expire?
-    my $to_expire = ( {@rest}->{expire_in} // 1 ) <= 0;
+    my $to_expire = ( {@rest}->{cache}{expire_in} // 1 ) <= 0;
 
-    # Layers of caches (direction: bottom-top)
+
+    # Layers of caches (set direction: bottom-top)
+    # Layer calls start from top to bottom
+    #
+    # @layers contains subs which recursively calls:
+    # - 0 bottom has the lowest priority (and actually get original data when
+    # cache is expired )
+    # - 1 layer above bottom calls bottom layer for data when layer data is
+    # expired
+    # - when data in layer above [1] is expired it calls [1] layer, which could
+    # return cached data or call bottom [0] layer for data if data on [1] layer
+    # is expired
+    # - and so on
     my @layers;
     for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
         my ( $l_idx, @params, @cb ) = ($#layers);
