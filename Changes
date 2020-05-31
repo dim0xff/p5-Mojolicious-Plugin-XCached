@@ -1,2 +1,6 @@
 {{$NEXT}}
+    - Support for driver options
+    - Support for content_with/content_for in templates
+
+0.0.1     2019-01-12
     - First release
