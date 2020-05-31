@@ -6,7 +6,7 @@
 
 Cache layers plugin
 
-=head2 SYNOPSIS
+=head1 SYNOPSIS
 
     # In your app
     $app->plugin(XCached => [ ... caches config ... ] );
@@ -19,7 +19,7 @@ Cache layers plugin
         my $user = $c->xcache('user');
         if (!$user) {
             $user = $user_model->load_user( id => $c->param('user_id') );
-            $c->xcache( user => $user, 3600 );
+            $c->xcache( user => $user, { expire_in => 3600 } );
         }
 
         $c->render( user => $user );
@@ -32,13 +32,15 @@ Cache layers plugin
         my $user = $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            3600
+            (
+                cache => { expire_in => 3600 }
+            )
         );
 
         $c->render( user => $user );
     }
 
-    # ... or even like this
+    # ... or even like this, if driver is non-blocking
     sub action {
         my $c = shift;
 
@@ -47,7 +49,9 @@ Cache layers plugin
         $c->xcache(
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
-            3600,
+            (
+                cache => { expire_in => 3600 }
+            ),
             sub {
                 my ( $xcache, $user ) = @_;
 
@@ -58,14 +62,22 @@ Cache layers plugin
 
 
     # In your template
-    %= xcinclude( 'common/user/info', $user );
+    <%= xcinclude(
+        'common/user/info',
+        user => $current_user,
+        xcached => [
+            cache => { expire_in => 60 }
+        ],
+        xcache_key => 'user:' . $current_user->id
+    ) %>
 
-    # @common/user/info.html.ep
+
+    # In @common/user/info.html.ep
     % for $object ( $user->related_objects ) {
         %= include( 'common/user/related_object' => $object );
     % }
 
-=head2 DESCRIPTION
+=head1 DESCRIPTION
 
 L<Mojolicious::Plugin::XCached> allows to add layers of caches to your app.
 
@@ -88,6 +100,7 @@ Returns count of cache layers
 To cache rendered templates includes
 
 =back
+
 
 
 =head1 MojoX::Cached
@@ -120,7 +133,7 @@ Simple cache which supports data caching, sub/method call results caching
     my $rendered = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        3600
+        expire_in => 3600
     );
 
     # The same, but in list context
@@ -129,7 +142,7 @@ Simple cache which supports data caching, sub/method call results caching
     ($rendered) = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        3600
+        expire_in => 3600
     );
 
     # Later when on call method with same arguments, result will be fetched from
@@ -143,24 +156,6 @@ You have treat this like L<Memoize> with expiration and different backends.
 It supports non-blocking interface, but non-blocking feature depends on driver
 implementation. Optional callback C<\&cb> could be passed as last argument for
 most of methods.
-
-Available backends:
-
-=over
-
-=item L<MojoX::Cached::Driver::Disk>
-
-Slow cache driver with filesystem storage.
-
-=item L<MojoX::Cached::Driver::Mojo>
-
-Cache driver built on top of L<Mojo::Cache>
-
-=back
-
-Debug warning messages could be turn on via C<MOJOX_CACHED_DEBUG=1>
-environment variable.
-
 
 =head1 AUTHOR
 
