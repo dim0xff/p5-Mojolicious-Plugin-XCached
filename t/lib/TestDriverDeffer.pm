@@ -86,7 +86,9 @@ sub set {
 }
 
 sub expire {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $key, $opts ) = @_;
 
     my $p = Mojo::Promise->new;
 
@@ -109,7 +111,9 @@ sub expire {
 }
 
 sub flush {
-    my ( $self, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $opts ) = @_;
 
     my $p = Mojo::Promise->new;
 

@@ -8,6 +8,7 @@ use lib 't/lib';
 note 'Test for no callbacks';
 
 use TestDriver;
+use Encode qw(encode_utf8);
 
 use_ok('MojoX::Cached');
 
@@ -115,14 +116,14 @@ subtest cached_sub => sub {
         @value = $cached->cached_sub( key => \&subroutine, [1] );
         is_deeply( \@value, [ 2, 'true' ], "cached (list): 1 / call: $_" );
 
-        $value = $cached->cached_sub( key => \&subroutine, [1] );
-        is( $value, 2, "cached (scalar): 1 / call: $_" );
-
-        @value = $cached->cached_sub( key => \&subroutine, [2] );
-        is_deeply( \@value, [ 4, 'true' ], "cached (list): 2 / call: $_" );
-
         $value = $cached->cached_sub( key => \&subroutine, [2] );
-        is( $value, 4, "cached (scalar): 2 / call: $_" );
+        is( $value, 4, "cached (scalar): 1 / call: $_" );
+
+        @value = $cached->cached_sub( key => \&subroutine, [3] );
+        is_deeply( \@value, [ 6, 'true' ], "cached (list): 2 / call: $_" );
+
+        $value = $cached->cached_sub( key => \&subroutine, [4] );
+        is( $value, 8, "cached (scalar): 2 / call: $_" );
     }
 
     is( subroutine_calls(), 4, 'only 4 cals for 20 caches' );
@@ -130,6 +131,8 @@ subtest cached_sub => sub {
         4,
         '4 keys in cache for one key name, 2 diff context, 2 diff arguments' );
 };
+
+
 
 subtest cached_method => sub {
     my $obj = ThePackage->new;
@@ -152,33 +155,33 @@ subtest cached_method => sub {
         2, '2 keys in cache for one key name, 2 diff context' );
 
     $cached->cached_method(
-        o_3_2 => $obj        => method => [ 3, 2 ],
-        cache => { expire_in => 0 }
+        o_3_2  => $obj        => method => [ 3, 2 ],
+        driver => { expire_in => 0 }
     );
     is( scalar( keys %{ $driver->cache } ), 1, '... key expired (scalar)' );
 
     () = $cached->cached_method(
-        o_3_2 => $obj        => method => [ 3, 2 ],
-        cache => { expire_in => 0 }
+        o_3_2  => $obj        => method => [ 3, 2 ],
+        driver => { expire_in => 0 }
     );
     is( scalar( keys %{ $driver->cache } ), 0, '... key expired (list)' );
 };
 
 subtest cached => sub {
     $driver->clear_status;
+
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
     is( $cached->cached( default => 'value' ), 'value', 'cached->set' );
     is( $cached->cached('default'), 'value', 'cached->get' );
     is( $cached->cached( 'default', undef, { expire_in => 1 } ),
         'value', 'cached->get with opts' );
     is( $cached->cached( default => 'value', { expire_in => 0 } ),
-        !!1, 'cached->set (expire)' );
+        1, 'cached->set (expire)' );
     is( $cached->cached( default => 'value', { expire_in => 0 } ),
         !!0, 'cached->set (expire)' );
     is_deeply( $driver->status,
         [ 'get', 'set', 'get', 'get', 'get', 'expire', 'expire' ],
         'set status' );
-
 
     subroutine_calls(0);
     $driver->clear_status;
@@ -192,7 +195,7 @@ subtest cached => sub {
     ) for ( 1 .. 5 );
     $cached->cached(
         subroutine => \&subroutine => [5],
-        cache      => { expire_in  => 0 }
+        driver     => { expire_in  => 0 }
     );
     is_deeply(
         $driver->status,
@@ -216,8 +219,8 @@ subtest cached => sub {
     is( $obj->{calls}, 2, 'only two method call' );
 
     $cached->cached_method(
-        o_3_2 => $obj        => method => [ 3, 2 ],
-        cache => { expire_in => 0 }
+        o_3_2  => $obj        => method => [ 3, 2 ],
+        driver => { expire_in => 0 }
     );
 
     is_deeply(
@@ -231,6 +234,46 @@ subtest fn_key => sub {
     $driver->clear_status;
 
     my $obj = ThePackage->new;
+
+    # key-ключ
+    my $key = "key-\x{43a}\x{43b}\x{44e}\x{447}";
+
+    subtest 'encode_utf8' => sub {
+        $cached->use_fn_key(1);
+        $driver->flush;
+        $driver->clear_status;
+
+        $cached->cached_sub( $key => \&subroutine, [4] );
+        is( scalar $cached->cached_sub( $key => \&subroutine, [4] ),
+            8, 'fn_key with encode_utf8' );
+
+        eval {
+            $cached->cached_sub(
+                $key => \&subroutine,
+                [5], fn_key_no_encode_utf8 => 1
+            );
+        };
+        like(
+            $@,
+            qr/Wide character/,
+            'fn_key with encode_utf8 failed: Wide character...'
+        );
+        undef $@;
+
+        $cached->cached_sub(
+            encode_utf8($key) => \&subroutine,
+            [5], fn_key_no_encode_utf8 => 1
+        );
+        is(
+            scalar $cached->cached_sub(
+                encode_utf8($key) => \&subroutine,
+                [5], fn_key_no_encode_utf8 => 1
+            ),
+            10,
+            'fn_key without encode_utf8 success (manual encoded)'
+        );
+    };
+
 
     for my $t (
         [
@@ -261,33 +304,33 @@ subtest fn_key => sub {
             $driver->clear_status;
 
             #<<< no tidy
-            $cached->cached_sub( key => \&subroutine, [1] );
-            $cached->cached_sub( key => \&subroutine, [1], fn_key => 1 );
-            $cached->cached_sub( key => \&subroutine, [1], fn_key => 0 );
+            $cached->cached_sub( $key => \&subroutine, [1] );
+            $cached->cached_sub( $key => \&subroutine, [1], fn_key => 1 );
+            $cached->cached_sub( $key => \&subroutine, [1], fn_key => 0 );
 
-            () = $cached->cached_sub( key => \&subroutine, [1] );
-            () = $cached->cached_sub( key => \&subroutine, [1], fn_key => 1 );
-            () = $cached->cached_sub( key => \&subroutine, [1], fn_key => 0 );
+            () = $cached->cached_sub( $key => \&subroutine, [1] );
+            () = $cached->cached_sub( $key => \&subroutine, [1], fn_key => 1 );
+            () = $cached->cached_sub( $key => \&subroutine, [1], fn_key => 0 );
 
-            $cached->cached_method( key => $obj => method => [3, 2] );
-            $cached->cached_method( key => $obj => method => [3, 2], fn_key => 1 );
-            $cached->cached_method( key => $obj => method => [3, 2], fn_key => 0 );
+            $cached->cached_method( $key => $obj => method => [3, 2] );
+            $cached->cached_method( $key => $obj => method => [3, 2], fn_key => 1 );
+            $cached->cached_method( $key => $obj => method => [3, 2], fn_key => 0 );
 
-            () = $cached->cached_method( key => $obj => method => [3, 2] );
-            () = $cached->cached_method( key => $obj => method => [3, 2], fn_key => 1 );
-            () = $cached->cached_method( key => $obj => method => [3, 2], fn_key => 0 );
+            () = $cached->cached_method( $key => $obj => method => [3, 2] );
+            () = $cached->cached_method( $key => $obj => method => [3, 2], fn_key => 1 );
+            () = $cached->cached_method( $key => $obj => method => [3, 2], fn_key => 0 );
             #>>>
 
-            my $sub_scalar_key = $cached->fn_key( 'SCALAR:key', [1] );
-            my $sub_list_key   = $cached->fn_key( 'LIST:key',   [1] );
+            my $sub_scalar_key = $cached->fn_key( "SCALAR:$key", [1] );
+            my $sub_list_key   = $cached->fn_key( "LIST:$key",   [1] );
             my $obj_scalar_key
-                = $cached->fn_key( 'SCALAR:key->method', [ 3, 2 ] );
-            my $obj_list_key = $cached->fn_key( 'LIST:key->method', [ 3, 2 ] );
+                = $cached->fn_key( "SCALAR:$key->method", [ 3, 2 ] );
+            my $obj_list_key = $cached->fn_key( "LIST:$key->method", [ 3, 2 ] );
 
             is_deeply(
                 [ sort keys %{ $driver->cache } ],
                 [
-                    sort 'key',    $sub_list_key, $sub_scalar_key,
+                    sort $key,     $sub_list_key, $sub_scalar_key,
                     $obj_list_key, $obj_scalar_key
                 ]
             );

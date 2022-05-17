@@ -54,7 +54,9 @@ sub set {
 }
 
 sub expire {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $key, $opts ) = @_;
 
     push( @{ $self->status }, 'expire' );
     my $status = exists $self->cache->{$key};
@@ -64,7 +66,9 @@ sub expire {
 }
 
 sub flush {
-    my ( $self, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $opts ) = @_;
 
     push( @{ $self->status }, 'flush' );
     $self->cache( {} );

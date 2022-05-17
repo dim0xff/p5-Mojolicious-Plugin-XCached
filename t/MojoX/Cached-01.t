@@ -65,15 +65,18 @@ ok(
 is( $cached->driver, $driver, 'driver ref' );
 
 my $key1 = { data => [ 1, 2, 3 ] };
+
 subtest set => sub {
     is(
         $cached->set(
             key1 => $key1,
             { expire_in => $default_expire * 2 },
             sub {
-                is( shift, $cached, 'instance' );
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
 
-                is_deeply( $_[0], $key1, 'set with default_expire * 2' );
+                is_deeply( $value, $key1, 'set with default_expire * 2' );
 
                 ok( exists $driver->cache->{key1}, 'set key' );
                 is_deeply( $driver->cache->{key1}{value}, $key1,
@@ -89,9 +92,12 @@ subtest set => sub {
                     $cached->set(
                         key1 => $key1,
                         sub {
-                            shift;
+                            my ( $instance, $value, $status, $r_driver, $data )
+                                = @_;
+                            is( $instance, $cached, 'instance' );
+                            is( $r_driver, $driver, 'driver' );
 
-                            is_deeply( $_[0], $key1, 'default set' );
+                            is_deeply( $value, $key1, 'default set' );
 
                             is(
                                 $driver->cache->{key1}{expire_at},
@@ -119,18 +125,21 @@ subtest get => sub {
         $cached->get(
             'key1',
             sub {
-                is( shift, $cached, 'instance' );
-                my ($data) = @_;
-                is_deeply( $data, $key1, 'retrieved data is equal to cached' );
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
+                is_deeply( $value, $key1, 'retrieved data is equal to cached' );
 
                 sleep( $default_expire + 1 );
                 is(
                     $cached->get(
                         'key1',
                         sub {
-                            shift;
-                            my ($data) = @_;
-                            is( $data, undef, 'data is expired' );
+                            my ( $instance, $value, $status, $r_driver, $data )
+                                = @_;
+                            is( $instance, $cached, 'instance' );
+                            is( $r_driver, $driver, 'driver' );
+                            is( $value,    undef,   'data is expired' );
 
                             return 'OK 1';
                         }
@@ -152,17 +161,21 @@ subtest expire => sub {
         $cached->set(
             key1 => $key1,
             sub {
-                shift;
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
 
-                is_deeply( $_[0], $key1, 'data in cache' );
+                is_deeply( $value, $key1, 'data in cache' );
 
                 is(
                     $cached->expire(
                         'key1',
                         sub {
-                            is( shift, $cached, 'instance' );
-                            my $status = shift;
-                            is( $status, 1, 'expire' );
+                            my ( $instance, $value, $status, $r_driver, $data )
+                                = @_;
+                            is( $instance, $cached, 'instance' );
+                            is( $r_driver, $driver, 'driver' );
+                            is( $status,   1,       'expire' );
                             is(
                                 $cached->get(
                                     'key1',
@@ -208,48 +221,127 @@ subtest expire => sub {
     );
 };
 
-subtest cached_sub => sub {
-    for ( 1 .. 5 ) {
+subtest cached_sub_scalar => sub {
+    for my $i ( 1 .. 5 ) {
         my ( @value, $value );
-        $cached->cached_sub(
+        $value = $cached->cached_sub(
             key => \&subroutine,
             [1],
             sub {
-                is( shift, $cached, 'instance' );
-                my @value = @_;
+                my ( $instance, $value, $status, $driver, $data ) = @_;
+                is( $instance, $cached,         'instance' );
+                is( $driver,   $cached->driver, 'driver' );
                 is_deeply(
-                    \@value,
+                    $value,
                     [ 2, 'true' ],
-                    "cached (cb/list): 1 / call: $_"
+                    "cached (cb/scalar): 1 / call: $i"
                 );
+                is( $status, 1, "status" );
+
+                return 42 * $i;
             }
         );
+        is( $value, 42 * $i,
+            "value returned from ->cached_sub (cb/scalar):  1 / call: $i" );
 
-        @value = $cached->cached_sub( key => \&subroutine, [1] );
-        is_deeply( \@value, [ 2, 'true' ], "cached (list): 1 / call: $_" );
 
         $value = $cached->cached_sub( key => \&subroutine, [1] );
-        is( $value, 2, "cached (scalar): 1 / call: $_" );
+        is( $value, 2, "cached (scalar): 1 / call: $i" );
 
-        $cached->cached_sub(
+        $value = $cached->cached_sub(
             key => \&subroutine,
             [2],
             sub {
-                shift;
-                my @value = @_;
+                my ( $instance, $value, $status, $driver, $data ) = @_;
+                is( $instance, $cached,         'instance' );
+                is( $driver,   $cached->driver, 'driver' );
                 is_deeply(
-                    \@value,
+                    $value,
                     [ 4, 'true' ],
-                    "cached (cb/list): 2 / call: $_"
+                    "cached (cb/scalar): 2 / call: $i"
                 );
+                is( $status, 1, "status" );
+
+                return 24 * $i;
             }
         );
-
-        @value = $cached->cached_sub( key => \&subroutine, [2] );
-        is_deeply( \@value, [ 4, 'true' ], "cached (list): 2 / call: $_" );
+        is( $value, 24 * $i,
+            "value returned from ->cached_sub (cb/scalar):  2 / call: $i" );
 
         $value = $cached->cached_sub( key => \&subroutine, [2] );
-        is( $value, 4, "cached (scalar): 2 / call: $_" );
+        is( $value, 4, "cached (scalar): 2 / call: $i" );
+    }
+
+    is( subroutine_calls(), 4, 'only 4 cals for 20 caches' );
+    is( scalar( keys %{ $driver->cache } ),
+        4,
+        '4 keys in cache for one key name, 2 diff context, 2 diff arguments' );
+};
+
+
+subtest cached_sub_list => sub {
+    for my $i ( 1 .. 5 ) {
+        my ( @value, $value );
+        @value = $cached->cached_sub(
+            key => \&subroutine,
+            [1],
+            sub {
+                my ( $instance, $value, $status, $driver, $data ) = @_;
+                is( $instance, $cached,         'instance' );
+                is( $driver,   $cached->driver, 'driver' );
+                is_deeply(
+                    $value,
+                    [ 2, 'true' ],
+                    "cached (cb/list): 1 / call: $i"
+                );
+                is( $status, 1, "status" );
+
+                return ( 42 * $i, 24 * $i );
+            }
+        );
+        is_deeply(
+            \@value,
+            [ 42 * $i, 24 * $i ],
+            "value returned from ->cached_sub (cb/scalar):  1 / call: $i"
+        );
+
+
+        @value = $cached->cached_sub( key => \&subroutine, [1] );
+        is_deeply( \@value, [ 2, 'true' ], "cached (list): 1 / call: $i" );
+
+
+        $value = $cached->cached_sub( key => \&subroutine, [1] );
+        is( $value, 2, "cached (scalar): 1 / call: $i" );
+
+        @value = $cached->cached_sub(
+            key => \&subroutine,
+            [2],
+            sub {
+                my ( $instance, $value, $status, $driver, $data ) = @_;
+                is( $instance, $cached,         'instance' );
+                is( $driver,   $cached->driver, 'driver' );
+                is_deeply(
+                    $value,
+                    [ 4, 'true' ],
+                    "cached (cb/list): 2 / call: $i"
+                );
+                is( $status, 1, "status" );
+                return ( 24 * $i, 42 * $i );
+            }
+        );
+        is_deeply(
+            \@value,
+            [ 24 * $i, 42 * $i ],
+            "value returned from ->cached_sub (cb/scalar):  2 / call: $i"
+        );
+
+
+        @value = $cached->cached_sub( key => \&subroutine, [2] );
+        is_deeply( \@value, [ 4, 'true' ], "cached (list): 2 / call: $i" );
+
+
+        $value = $cached->cached_sub( key => \&subroutine, [2] );
+        is( $value, 4, "cached (scalar): 2 / call: $i" );
     }
 
     is( subroutine_calls(), 4, 'only 4 cals for 30 caches' );
@@ -258,18 +350,20 @@ subtest cached_sub => sub {
         '4 keys in cache for one key name, 2 diff context, 2 diff arguments' );
 };
 
+
 subtest cached_method => sub {
     my $obj = ThePackage->new;
 
     $cached->driver->flush;
 
     for ( 1 .. 5 ) {
-        $cached->cached_method(
+        () = $cached->cached_method(
             o_3_2 => $obj => method => [ 3, 2 ],
             sub {
-                is( shift, $cached, 'instance' );
-                my @value = @_;
-                is_deeply( \@value, [6], "cached (cb/list): 3*2 / call $_" );
+                my ( $instance, $value, $status, $driver, $data ) = @_;
+                is( $instance, $cached,         'instance' );
+                is( $driver,   $cached->driver, 'driver' );
+                is_deeply( $value, [6], "cached (cb/list): 3*2 / call $_" );
             }
         );
 
@@ -289,14 +383,14 @@ subtest cached_method => sub {
         2, '2 keys in cache for one key name, 2 diff context' );
 
     $cached->cached_method(
-        o_3_2 => $obj        => method => [ 3, 2 ],
-        cache => { expire_in => 0 }
+        o_3_2  => $obj => method => [ 3, 2 ],
+        driver => { expire_in => 0 }
     );
     is( scalar( keys %{ $driver->cache } ), 1, '... key expired (scalar)' );
 
-    $cached->cached_method(
-        o_3_2 => $obj        => method => [ 3, 2 ],
-        cache => { expire_in => 0 },
+    () = $cached->cached_method(
+        o_3_2  => $obj => method => [ 3, 2 ],
+        driver => { expire_in => 0 },
         sub {
             is( shift, $cached, 'instance' );
 
@@ -312,14 +406,22 @@ subtest cached => sub {
     $cached->cached(
         default => 'value',
         sub {
-            is( my $cached = shift, $cached, 'instance' );
-            my ($value) = @_;
+            my ( $instance, $value, $status, $driver, $data ) = @_;
+
+            my $wa = wantarray;
+            is( wantarray, undef, 'cb in void(scalar)' );
+
             is( $value, 'value', 'cached->set' );
 
-            $cached->cached(
+
+            scalar $cached->cached(
                 default => 'value',
                 sub {
                     is( my $cached = shift, $cached, 'instance' );
+
+                    my $wa = wantarray;
+                    is( wantarray, !!0, 'cb in scalar' );
+
                     my ($value) = @_;
                     is( $value, 'value', 'cached->set' );
                     is_deeply( $driver->status, [ 'get', 'set', 'get' ],
@@ -341,6 +443,10 @@ subtest cached => sub {
         { expire_in => 5 },
         sub {
             is( my $cached = shift, $cached, 'instance' );
+
+            my $wa = wantarray;
+            is( wantarray, undef, 'cb in void(scalar)' );
+
             my ($value) = @_;
 
             is( $value, 'value', 'cached->set' );
@@ -357,18 +463,28 @@ subtest cached => sub {
         '',
         { expire_in => 0 },
         sub {
-            is( my $cached = shift, $cached, 'instance' );
-            my ($status) = @_;
+            my ( $instance, $value, $status, $r_driver, $data ) = @_;
 
-            is( $status, !!1, 'cached->expire 1' );
+            my $wa = wantarray;
+            is( wantarray, undef, 'cb in void(scalar)' );
 
-            $cached->cached(
+            is( $instance, $cached, 'instance' );
+            is( $r_driver, $driver, 'driver' );
+
+            is( $status, 1, 'cached->expire 1' );
+
+            () = $cached->cached(
                 'default',
                 '',
                 { expire_in => 0 },
                 sub {
-                    is( my $cached = shift, $cached, 'instance' );
-                    my ($status) = @_;
+                    my ( $instance, $value, $status, $r_driver, $data ) = @_;
+
+                    my $wa = wantarray;
+                    is( wantarray, !!1, 'cb in list' );
+
+                    is( $instance, $cached, 'instance' );
+                    is( $r_driver, $driver, 'driver' );
 
                     is( $status, !!0, 'cached->expire 0' );
                     is_deeply( $driver->status, [ 'expire', 'expire' ],
@@ -378,30 +494,40 @@ subtest cached => sub {
         }
     );
 
-
     subroutine_calls(0);
     $driver->clear_status;
     for my $n ( 1 .. 5 ) {
         $cached->cached(
             subroutine => \&subroutine => [5],
             sub {
-                is( my $cached = shift, $cached, 'instance' );
-                my (@value) = @_;
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+
+                my $wa = wantarray;
+                is( wantarray, undef, 'cb in void(scalar)' );
+
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
                 is_deeply(
-                    \@value,
+                    $value,
                     [ 10, 'true' ],
                     "cb/list cached->subroutine / call $n"
                 );
             }
         );
     }
-    $cached->cached(
+    () = $cached->cached(
         subroutine => \&subroutine => [5],
-        cache      => { expire_in  => 0 },
+        driver     => { expire_in => 0 },
         sub {
-            is( my $cached = shift, $cached, 'instance' );
-            my (@value) = @_;
-            is_deeply( \@value, [1],
+            my ( $instance, $value, $status, $r_driver, $data ) = @_;
+
+            my $wa = wantarray;
+            is( wantarray, 1, 'cb in list' );
+
+            is( $instance, $cached, 'instance' );
+            is( $r_driver, $driver, 'driver' );
+
+            is_deeply( $value, undef,
                 "cb/list cached->subroutine / expire call" );
         }
     );
@@ -415,24 +541,37 @@ subtest cached => sub {
     my $obj = ThePackage->new;
     $driver->clear_status;
     for my $n ( 1 .. 5 ) {
-        $cached->cached_method(
+        () = $cached->cached_method(
             o_3_2 => $obj => method => [ 3, 2 ],
             sub {
-                is( my $cached = shift, $cached, 'instance' );
-                my (@value) = @_;
-                is_deeply( \@value, [6], "cached (cb/list): 3*2 / call $n" );
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+
+                my $wa = wantarray;
+                is( wantarray, 1, 'cb in list' );
+
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
+                is_deeply( $value, [6], "cached (cb/list): 3*2 / call $n" );
             }
         );
     }
     is( $obj->{calls}, 1, 'only one method call' );
 
-    for my $expire ( !!1, !!0 ) {
-        $cached->cached_method(
-            o_3_2 => $obj        => method => [ 3, 2 ],
-            cache => { expire_in => 0 },
+    for my $expire ( 1, !!0 ) {
+        scalar $cached->cached_method(
+            o_3_2  => $obj => method => [ 3, 2 ],
+            driver => { expire_in => 0 },
             sub {
-                is( my $cached = shift, $cached, 'instance' );
-                is_deeply( \@_, [$expire], "expire" );
+                my ( $instance, $value, $status, $r_driver, $data ) = @_;
+
+                my $wa = wantarray;
+                is( wantarray, !!0, 'cb in scalar' );
+
+                is( $instance, $cached, 'instance' );
+                is( $r_driver, $driver, 'driver' );
+
+                is( $value, undef, 'empty result' );
+                is_deeply( $status, $expire, "expire" );
             }
         );
     }
@@ -443,6 +582,7 @@ subtest cached => sub {
         'cache call status'
     );
 };
+
 
 subtest fn_key => sub {
     $driver->clear_status;
@@ -496,13 +636,14 @@ subtest fn_key => sub {
             () = $cached->cached_method( key => $obj => method => [3, 2], fn_key => 0, sub {} );
             #>>>
 
-            my $sub_list_key = $cached->fn_key( 'LIST:key', [1] );
+            my $sub_list_key = $cached->fn_key( 'LIST:key',         [1] );
             my $obj_list_key = $cached->fn_key( 'LIST:key->method', [ 3, 2 ] );
 
             is_deeply( [ sort keys %{ $driver->cache } ],
                 [ sort 'key', $sub_list_key, $obj_list_key ] );
 
             is_deeply( $driver->status, $t->[2], 'cache call status' );
+
         };
     }
 };

@@ -8,7 +8,7 @@ sub startup {
         XCached => [
             map {
                 {
-                    driver         => 'Mojo',
+                    driver         => '+TestDriverLog',
                     driver_options => {},
                     default_expire => $_,
                 }
@@ -46,6 +46,7 @@ test/include <%= $rt %>
     content_with test/include <%= $rt %>
 % end
 
+
 @@ test/index.html.ep
 % layout 'default';
 
@@ -60,6 +61,7 @@ test/index <%= $t %>/<%= $rt %>
 % end
 
 %= xcinclude 'test/include' => ( xcache_content_for => ['for'], xcache_content_with => ['with'] )
+
 
 @@ layouts/default.html.ep
 %= content
