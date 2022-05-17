@@ -85,14 +85,19 @@ sub set {
 }
 
 sub expire {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $key, $opts ) = @_;
+
     my $status = unlink $self->_file($key);
 
     return $cb ? $cb->( $self, !!$status ) : !!$status;
 }
 
 sub flush {
-    my ( $self, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $opts ) = @_;
 
     for my $file ( $self->dir->list_tree->each ) {
         unlink $file;

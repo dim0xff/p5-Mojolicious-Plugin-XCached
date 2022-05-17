@@ -64,7 +64,9 @@ sub set {
 }
 
 sub expire {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $key, $opts ) = @_;
 
     for my $idx ( 0 .. $#{ $self->_instance->{queue} } ) {
         if ( $self->_instance->{queue}[$idx] eq $key ) {
@@ -79,7 +81,9 @@ sub expire {
 }
 
 sub flush {
-    my ( $self, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+    my ( $self, $opts ) = @_;
 
     $self->_instance->{queue} = [];
     $self->_instance->{cache} = {};
