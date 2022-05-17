@@ -52,9 +52,9 @@ sub register {
         $cache_index++;
     }
 
-    $app->helper( xcache    => sub { _xcache(@_) } );
-    $app->helper( xcaches   => sub { return $cache_index } );
-    $app->helper( xcinclude => sub { _xcinclude(@_) } );
+    $app->helper( xcache      => sub { _xcache(@_) } );
+    $app->helper( xcaches_num => sub { return $cache_index } );
+    $app->helper( xcinclude   => sub { _xcinclude(@_) } );
 
     $app->log->debug("XCached loaded. Total layers: $cache_index");
 }
@@ -91,7 +91,7 @@ sub _xcache {
 
 
     # No XCached
-    if ( $c->stash('NO_XCACHED') || !$c->xcaches ) {
+    if ( $c->stash('NO_XCACHED') || !$c->xcaches_num ) {
 
         # Return nothing if it is "get" for general data
         return unless @arguments;
@@ -353,7 +353,7 @@ Plugin adds two helpers:
 
 To use caches inside application and/or templates
 
-=item L</xcaches>
+=item L</xcaches_num>
 
 Returns count of cache layers
 
