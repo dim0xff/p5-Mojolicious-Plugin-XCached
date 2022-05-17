@@ -117,7 +117,7 @@ sub _xcache {
     my $in_scalar;
 
     $key = $c->app->xcached->[0]->get_cache_key(
-        $key, wantarray,
+        $key, !!wantarray,
         ( $sub    // () ),
         ( $obj    // () ),
         ( $method // () ),
@@ -128,30 +128,46 @@ sub _xcache {
     if ( !$sub && !$method ) {
         $in_scalar = 1;
         $sub       = sub { shift @_ };
-        @rest      = ( cache => shift @rest ) if ref $rest[0] eq 'HASH';
+        @rest      = ( driver => shift @rest ) if ref $rest[0] eq 'HASH';
         @arguments = ( [@arguments] );
     }
 
     # Expire?
-    my $to_expire = ( {@rest}->{cache}{expire_in} // 1 ) <= 0;
+    my $to_expire = ( {@rest}->{driver}{expire_in} // 1 ) <= 0;
 
 
     # Layers of caches (set direction: bottom-top)
     # Layer calls start from top to bottom
     #
     # @layers contains subs which recursively calls:
-    # - 0 bottom has the lowest priority (and actually get original data when
-    # cache is expired )
-    # - 1 layer above bottom calls bottom layer for data when layer data is
-    # expired
-    # - when data in layer above [1] is expired it calls [1] layer, which could
-    # return cached data or call bottom [0] layer for data if data on [1] layer
-    # is expired
+    # - $layers[0] bottom has the lowest priority (and actually get original data when
+    #   cache is expired )
+    # - $layers[1] layer above bottom calls bottom layer for data when layer data is
+    #   expired
+    # - when data in layer above $layers[1] ($layers[2]) is expired it calls
+    #   $layers[1], which could return cached data or call bottom $layers[0]
+    #   for data if data on $layers[1] is expired
     # - and so on
     my @layers;
-    for my $idx ( reverse 0 .. ( $c->xcaches - 1 ) ) {
-        my ( $l_idx, @params, @cb ) = ($#layers);
+    for my $x_idx ( reverse 0 .. ( $c->xcaches_num - 1 ) ) {
+        my $idx   = $x_idx;
+        my $l_idx = $#layers;
 
+        my @cb;
+        if ($cb) {
+            if ($idx) {
+                push @cb, $to_expire
+
+                    # +1(current, because $l_idx is -1) +1(next)
+                    ? sub { shift; return $layers[ $l_idx + 2 ]->() }
+                    : sub { shift; my $v = shift; defined $v ? @{$v} : undef };
+            }
+            else {
+                push @cb, sub { $cb->( @_[ 0 .. 2 ] ) };
+            }
+        }
+
+        my @params;
         if (@layers) {
             @params = ( $layers[$l_idx], [], );
         }
@@ -163,33 +179,12 @@ sub _xcache {
             );
         }
 
-        if ($cb) {
-            if ($idx) {
-                push @cb,
-                    $to_expire
-                    ? sub { shift; $layers[ $l_idx + 2 ]->(); @_; }
-                    : sub { shift; @_; };
-            }
-            else {
-                push @cb, $cb;
-            }
-        }
-
         push @layers, sub {
-            if ($in_scalar) {
-                return scalar $c->app->xcached->[$idx]->cached(
-                    $key => @params,
-                    ( @rest, fn_key => 0 ),
-                    @cb
-                );
-            }
-            else {
-                return $c->app->xcached->[$idx]->cached(
-                    $key => @params,
-                    ( @rest, fn_key => 0 ),
-                    @cb
-                );
-            }
+            return $c->app->xcached->[$idx]->cached(
+                $key => @params,
+                ( @rest, fn_key => 0 ),
+                @cb
+            );
         };
     }
 
@@ -198,10 +193,17 @@ sub _xcache {
             return $layers[0]->();
         }
         else {
-            $_->() for @layers;
+            # Expire from bottom (0-N)
+            my $result = !!0;
+            for (@layers) {
+                $result = 1 if $_->();
+            }
+
+            return $result;
         }
     }
     else {
+        # Result from top N-0
         return $layers[-1]->();
     }
 }
@@ -212,7 +214,8 @@ sub _xcinclude {
     my $c = shift;
 
     # No XCached
-    return $c->helpers->include(@_) if $c->stash('NO_XCACHED') || !$c->xcaches;
+    return $c->helpers->include(@_)
+        if $c->stash('NO_XCACHED') || !$c->xcaches_num;
 
     my ( $template, %args ) = ( @_ % 2 ? shift : undef, @_ );
 
@@ -246,7 +249,7 @@ sub _xcinclude {
                 my %content;
                 @content{@c_keys} = @{ $c->stash->{'mojo.content'} }{@c_keys};
                 return \%content;
-                } => [ $template, %args ],
+            } => [ $template, %args ],
             @{$cache_options}
         );
     };
@@ -295,7 +298,7 @@ __END__
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
             (
-                cache => { expire_in => 3600 }
+                driver => { expire_in => 3600 }
             )
         );
 
@@ -312,12 +315,14 @@ __END__
             user => $user_model => load_user =>
             [ id => $c->param('user_id') ],
             (
-                cache => { expire_in => 3600 }
+                driver => { expire_in => 3600 }
             ),
             sub {
-                my ( $xcache, $user ) = @_;
+                my ( $xcache, $user, $ok ) = @_;
 
-                $c->render( user => $user );
+                if ($ok) {
+                    $c->render( user => $user );
+                }
             }
         );
     }
@@ -328,7 +333,7 @@ __END__
         'common/user/info',
         user => $current_user,
         xcached => [
-            cache => { expire_in => 60 }
+            driver => { expire_in => 60 }
         ],
         xcache_key => 'user:' . $current_user->id
     ) %>
@@ -413,6 +418,10 @@ B<1> means I<disable xcache>, B<0> means I<enable xcache>.
 Layered cache, accepts the same arguments as L<MojoX::Cached/cached>.
 
 Will cache data at all layers, and get from top available layer.
+
+If callback provided as last argument, then it will be called like:
+
+    $cb->($xcache, $result, $ok )
 
 =head1 xcinclude
 

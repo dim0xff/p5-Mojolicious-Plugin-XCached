@@ -5,6 +5,7 @@ package MojoX::Cached;
 use Mojo::Base -base;
 
 use Digest::MD5 qw(md5_hex);
+use Encode qw(encode_utf8);
 use Scalar::Util qw(blessed);
 
 use MojoX::Cached::Driver::Mojo;
@@ -24,38 +25,44 @@ sub get {
     my $cb;
     $cb = pop if ref $_[-1] eq 'CODE';
 
-    my ( $self, $key, $opts ) = @_;
+    my ( $self, $key, $driver_opts ) = @_;
 
     warn "-- @{[$self->name]} ->get '$key'\n\n" if DEBUG;
 
     # Callback
     if ($cb) {
         return $self->driver->get(
-            $key, $opts,
+            $key,
+            $driver_opts,
             sub {
-                my ( undef, $data ) = @_;
-                return $cb->( $self, $data ? $data->{value} : () );
+                my @data = @_;
+
+                return $cb->(
+                    $self,
+                    ( @data > 1 ? ( $data[1]{value}, 1 ) : ( undef, !!0 ) ),
+                    @data,
+                );
             }
         );
     }
 
     # Default behaviour
-    my $cdata = $self->driver->get( $key, $opts ) or return;
-    return $cdata->{value};
+    my $cached_data = $self->driver->get( $key, $driver_opts ) or return;
+    return $cached_data->{value};
 }
 
 sub set {
     my $cb;
     $cb = pop if ref $_[-1] eq 'CODE';
 
-    my ( $self, $key, $data, $opts ) = @_;
+    my ( $self, $key, $data, $driver_opts ) = @_;
 
     warn "-- @{[$self->name]} ->set '$key'\n\n" if DEBUG;
 
     my %merged_opts = (
         expire_in => $self->default_expire,
 
-        %{ $opts // {} }
+        %{ $driver_opts // {} }
     );
 
     # Callback
@@ -64,24 +71,44 @@ sub set {
             $key => $data,
             \%merged_opts,
             sub {
-                my ( undef, $data ) = @_;
-                return $cb->( $self, $data ? $data->{value} : () );
+                my @data = @_;
+
+                return $cb->(
+                    $self,
+                    ( @data > 1 ? ( $data[1]{value}, 1 ) : ( undef, !!0 ) ),
+                    @data,
+                );
             }
         );
     }
 
     # Default behaviour
-    my $cdata = $self->driver->set( $key, $data, \%merged_opts ) or return;
-    return $cdata->{value};
+    my $cached_data = $self->driver->set( $key, $data, \%merged_opts )
+        or return;
+    return $cached_data->{value};
 }
 
 sub expire {
-    my ( $self, $key, $cb ) = @_;
+    my $cb;
+    $cb = pop if ref $_[-1] eq 'CODE';
+
+    my ( $self, $key, $driver_opts ) = @_;
 
     warn "-- @{[$self->name]} ->expire '$key'\n\n" if DEBUG;
 
-    return $self->driver->expire( $key,
-        ( $cb ? sub { shift; $cb->( $self, @_ ); } : () ) );
+    return $self->driver->expire(
+        $key,
+        $driver_opts,
+        (
+            $cb
+            ? sub {
+                my @data = @_;
+
+                return $cb->( $self, ( undef, $data[1] ? 1 : !!0 ), @data );
+                }
+            : ()
+        )
+    );
 }
 
 sub cached {
@@ -90,11 +117,15 @@ sub cached {
 
     my ( $self, $key ) = ( shift, shift );
 
-    # Get/Set/Expire
+    # Get/Set/Expire:
+    # $_[0] contains data to be cached
     if ( @_ && defined $_[0] ) {
 
         # Cached sub
         if ( ref $_[0] eq 'CODE' ) {
+            warn "-- @{[$self->name]} ->cached_sub via cached...\n"
+                if DEBUG;
+
             return $self->cached_sub( $key, @_, ( $cb // () ) );
         }
 
@@ -105,6 +136,9 @@ sub cached {
             && !ref( $_[1] )
             && $_[0]->can( $_[1] ) )
         {
+            warn "-- @{[$self->name]} ->cached_method via cached...\n"
+                if DEBUG;
+
             return $self->cached_method( $key, @_, ( $cb // () ) );
         }
 
@@ -114,34 +148,76 @@ sub cached {
 
             $opts //= {};
 
-            return $self->expire( $key, ( $cb // () ) )
-                if ( $opts->{expire_in} // 1 ) <= 0;
+            if ( ( $opts->{expire_in} // 1 ) <= 0 ) {
+                warn "-- @{[$self->name]} ->expire regular data via cached...\n"
+                    if DEBUG;
+
+                return $self->expire( $key, $opts, ( $cb // () ) );
+            }
 
             my $next = sub {
-                my ( $self, @data ) = @_;
+                my ( $self, $value, $success, @rest ) = @_;
 
                 # Data found in cache
-                if (@data) {
-                    return $cb ? $cb->( $self, $data[0] ) : $data[0];
+                if ($success) {
+                    warn
+                        "-- @{[$self->name]} ... ->get regular data FOUND via cached...\n\n"
+                        if DEBUG;
+
+                    return $cb
+                        ? $cb->( $self, $value, $success, @rest )
+                        : $value;
                 }
+
+                warn
+                    "-- @{[$self->name]} ... ->get regular data NOT found via cached...\n"
+                    if DEBUG;
+                warn
+                    "-- @{[$self->name]} ... ->set regular data found via cached...\n"
+                    if DEBUG;
 
                 # Cache data
                 return $self->set( $key, $data, $opts, ( $cb // () ) );
             };
 
             if ($cb) {
+                warn
+                    "-- @{[$self->name]} ->get regular data with cb via cached...\n"
+                    if DEBUG;
+
                 return $self->get( $key, $next );
             }
             else {
+                warn "-- @{[$self->name]} ->get regular data via cached...\n"
+                    if DEBUG;
+
+                return $self->get( $key, $next );
                 return $next->( $self, $self->get( $key, $opts ) );
             }
         }
     }
 
-    # Get
+    # Get/Expire
     else {
-        shift unless defined $_[0];
-        return $self->get( $key, @_, ( $cb // () ) );
+        shift if @_; # get/expire: remove undefined data from @_
+
+        # Now $_[0] could contains %driver_options
+        # If driver options contains 'expire_in' <= 0, then expire data
+        if (   @_
+            && ref $_[0] eq 'HASH'
+            && ( $_[0]->{expire_in} // 1 ) <= 0 )
+        {
+            warn "-- @{[$self->name]} ->expire via cached...\n"
+                if DEBUG;
+
+            return $self->expire( $key, @_, ( $cb // () ) );
+        }
+        else {
+            warn "-- @{[$self->name]} ->get via cached...\n"
+                if DEBUG;
+
+            return $self->get( $key, @_, ( $cb // () ) );
+        }
     }
 }
 
@@ -162,62 +238,70 @@ sub cached_sub {
     $key = $self->get_cache_key( $key, !!wantarray, $sub, $arguments, %rest,
         ( $cb // () ) );
 
-    my $opts = $rest{cache} || {};
+    my $driver_opts = $rest{driver} || {};
 
     # Expiration
-    return $self->expire( $key, ( $cb // () ) )
-        if ( $opts->{expire_in} // 1 ) <= 0;
+    return $self->expire( $key, $driver_opts, ( $cb // () ) )
+        if ( $driver_opts->{expire_in} // 1 ) <= 0;
+
 
     my $next = sub {
-        my ( $self, @data ) = @_;
+        my ( $self, $value, $success, @rest ) = @_;
+        # @rest contains "raw" data returned from driver
 
         # Found, return cached data
-        if (@data) {
+        if ($success) {
             warn "-- @{[$self->name]} ->cached_sub data found for '$key'\n\n"
                 if DEBUG;
 
             return
-                  $cb ? $cb->( $self, @{ $data[0] } )
-                : $is_list_context && ref $data[0] eq 'ARRAY' ? @{ $data[0] }
-                :                                               $data[0];
+                  $cb                                       ? $cb->(@_)
+                : $is_list_context && ref $value eq 'ARRAY' ? @{$value}
+                :                                             $value;
         }
+
+        warn "-- @{[$self->name]} ->cached_sub data NOT found for '$key'\n\n"
+                if DEBUG;
 
         # Not found. Cache it!
         if ($is_list_context) {
-            @data = $sub->( @{$arguments} );
+            my @data = $sub->( @{$arguments} );
 
             if ( @data > 1 || defined $data[0] ) {
-                $self->set(
+                return $self->set(
                     $key => \@data,
-                    $opts,
-                    (
-                        $cb
-                        ? sub {
-                            my ( $self, $data ) = @_;
-                            $cb->( $self, @{$data} );
-                        }
-                        : ()
-                    )
+                    $driver_opts,
+                    ( $cb // sub { return @data } )
                 );
             }
 
-            return @data;
+            return $cb->($self, undef, !!0) if $cb;
+            return;
         }
         else {
             my $data = $sub->( @{$arguments} );
             if ( defined $data ) {
-                $self->set( $key => $data, $opts, ( $cb // () ) );
+                return $self->set(
+                    $key => $data,
+                    $driver_opts,
+                    ( $cb // sub { return $data } )
+                );
             }
 
-            return $data;
+            return scalar $cb->($self, undef, !!0) if $cb;
+            return;
         }
     };
 
     if ($cb) {
-        return $self->get( $key, $opts, $next );
+        return $self->get( $key, $driver_opts, $next );
     }
     else {
-        return $next->( $self, $self->get($key, $opts) );
+        # Get data for key and provided driver options
+        # @data has no values when no cached data found
+        my @data = $self->get( $key, $driver_opts );
+
+        return $next->( $self, ( @data ? ( $data[0], 1 ) : ( undef, 0 ) ) );
     }
 }
 
@@ -279,15 +363,25 @@ sub get_cache_key {
         "-- @{[$self->name]} ->get_cache_key repsect context cache key '$key'\n\n"
         if DEBUG;
 
-    return $self->fn_key( $key => $arguments, $opts{flatten_args} );
+    return $self->fn_key(
+        $key => $arguments,
+        {
+            flatten_args   => $opts{fn_key_flatten_args},
+            no_encode_utf8 => $opts{fn_key_no_encode_utf8},
+        }
+    );
 }
 
 sub fn_key {
-    my ( $self, $key, $arguments, $flatten_args ) = @_;
+    my ( $self, $key, $arguments, $opts ) = @_;
 
-    local $self->{flatten_args} = $flatten_args if ref $flatten_args eq 'CODE';
+    $opts //= {};
+
+    local $self->{flatten_args} = $opts->{flatten_args}
+        if ref $opts->{flatten_args} eq 'CODE';
 
     $key = $key . '(' . $self->_flatten_args($arguments) . ')';
+    $key = encode_utf8($key) unless $opts->{no_encode_utf8};
 
     warn "-- @{[$self->name]} ->fn_key '@{[md5_hex($key)]}' / '$key'\n\n"
         if DEBUG;
@@ -366,7 +460,7 @@ __END__
     my $rendered = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        expire_in => 3600
+        driver => { expire_in => 3600 }
     );
 
     # The same, but in list context
@@ -375,7 +469,7 @@ __END__
     ($rendered) = $cacher->cached(
         'heavy_template' => $temlate => 'render' =>
         [ ... some template data ... ],
-        expire_in => 3600
+        driver => { expire_in => 3600 }
     );
 
     # Later when on call method with same arguments, result will be fetched from
@@ -389,6 +483,15 @@ You have treat this like L<Memoize> with expiration and different backends.
 It supports non-blocking interface, but non-blocking feature depends on driver
 implementation. Optional callback C<\&cb> could be passed as last argument for
 most of methods.
+
+If callback is provided, then methods return data from callback call.
+Callback will be called as:
+
+    # On success
+    $cb->( $xcache, $result_value, 1, @driver_return )
+
+    # On fail
+    $cb->( $xcache, undef, !!0, @driver_return )
 
 Available backends:
 
@@ -439,40 +542,43 @@ to generate cache key for subroutine/method call.
 Default is C<1> (true).
 
 
-=method get ($key, \%opts?, \&cb?)
+=method get ($key, \%driver_options?, \&cb?)
 
 Get cached data by C<$key>
 
-If C<\%opts> is provided it will be passed to driver call.
+If C<\%driver_options> is provided it will be passed to driver method call.
 
 
-=method set ($key, $data, \%opts?, \&cb?)
+=method set ($key, $data, \%driver_options?, \&cb?)
 
 Cache C<$data> by C<$key>.
 
-If C<\%opts> is provided it will be merged with default values and passed
+If C<\%driver_options> is provided it will be merged with default values and passed
 to driver call.
 
-Default C<\%opts> values are
+Default C<\%driver_options> values are
 
     expire_in - default to L</default_expire>
 
-=method expire ($key)
+=method expire ($key, \%driver_options, \&cb?)
 
 Expire cached data by C<$key>.
+
+If C<\%driver_options> is provided it will be passed to driver method call.
 
 
 =method cached_sub ($key, \&subroutine, \@arguments, %options?, \&cb?)
 
 Cache data (by C<$key> or L<functional key|/fn_key>) returned from
 C<&subroutine(@arguments)> call with respecting call context (LIST or SCALAR).
-When C<\&cb> is passed context forced to LIST.
+
+I<Note about context>: when C<\&cb> is passed context will be forced to B<LIST>.
 
 Available C<options>:
 
 =over
 
-=item cache
+=item driver
 
 Type: hashref
 
@@ -502,10 +608,10 @@ useful options).
     # Will be expired in 3600 seconds
     $cached->cached_method(
         key => $sub => [ ... arguments ... ],
-        ( cache => { expire_in => 3600 } ),
+        ( driver => { expire_in => 3600 } ),
         sub {
-            my ( $cached, @result ) = @_;
-            # @result = $sub->( ... arguments ... );
+            my ( $cached, $result, $ok ) = @_;
+            # $result = [ $sub->( ... arguments ... ) ];
         }
     );
 
@@ -514,12 +620,12 @@ useful options).
     $cached->cached_method(
         some_key => $sub => [ ... arguments ... ],
         (
-            cache  => { expire_in => 3600, t => time - 600, },
+            driver => { expire_in => 3600, t => time - 600, },
             fn_key => 0,
         ),
         sub {
-            my ( $cached, @result ) = @_;
-            # @result = $sub->( ... arguments ... );
+            my ( $cached, $result, $ok ) = @_;
+            # $result = [ $sub->( ... arguments ... ) ];
         }
     );
 
@@ -529,7 +635,7 @@ useful options).
 Cache data (by C<$key>) returned from C<$object-E<gt>$method(@arguments)> call
 with respecting call context (LIST OR SCALAR).
 
-It is wrapper over L</cached_sub>, so for C<%options> look L</cached_sub>.
+It is wrapper over L</cached_sub>, so for C<%options> refer to L</cached_sub>.
 
     # Scalar context
     # Perform equals to:
@@ -548,34 +654,35 @@ It is wrapper over L</cached_sub>, so for C<%options> look L</cached_sub>.
     # With callback
     $cached->cached_method(
         key => $object => $some_method => [ ... arguments ... ],
-        ( expire_in => 3600 ),
+        driver => { expire_in => 3600 },
         sub {
-            my ( $cached, @result ) = @_;
-            # @result = $object->$some_method( ... arguments ... );
+            my ( $cached, $result, $ok ) = @_;
+            # $result = [ $object->$some_method( ... arguments ... ) ];
         }
     );
 
 
-=method cached ($key, ($data?, \%opts?) | ( \&subroutine|($object, $method), \@arguments, %options? ), \&cb?)
+=method cached ($key, ($data?, \%driver_opts?) | ( \&subroutine|($object, $method), \@arguments, %options? ), \&cb?)
 
-Shorthand for for L</get>, L</set>, L</cached_sub> and L</cached_method>
+Shorthand for for L</get>, L</set>, L</expire>, L</cached_sub> and L</cached_method>
 and its expiration.
 
     # ->get
-    $cached->cached($key, \&cb?) # without driver options
-    $cached->cached($key, undef, \%opts?, \&cb?) # with driver options
+    $cached->cached($key, \&cb?);                        # without driver options
+    $cached->cached($key, undef, \%driver_opts?, \&cb?); # with driver options
 
     # ->get if cached, or ->set (or even ->expire)
-    $cached->cached($key, $data, \&cb?) # get/set without options
-    $cached->cached($key, $data, \%opts?, \&cb?) # get/set with options
-    $cached->cached($key, $data, {expire_in => 0}, \&cb?) # expire
+    $cached->cached($key, $data, \&cb?);                   # get/set without driver options
+    $cached->cached($key, $data, \%driver_opts?, \&cb?);   # get/set with driver options
+    $cached->cached($key, $data, {expire_in => 0}, \&cb?); # expire ($data is ignored)
+    $cached->cached($key, undef, {expire_in => 0}, \&cb?); # expire
 
 
     # cached_sub
-    $cached->cached($key, \&subroutine, \@arguments, %options?, \&cb?)
+    $cached->cached($key, \&subroutine, \@arguments, %options?, \&cb?);
 
     # cached_method
-    $cached->cached($key, $object, $method, \@arguments, %options?, \&cb?)
+    $cached->cached($key, $object, $method, \@arguments, %options?, \&cb?);
 
 
 =method get_cache_key ($key, $wantarray, \&subroutine|($object, $method), \@arguments, \%options?, \&cb?)
@@ -586,13 +693,6 @@ Available options:
 
 =over
 
-=item flatten_args
-
-Type: B<coderef>
-
-Subroutine to make string from sub/method arguments for current caching
-(default L</default_flatten_args>).
-
 =item fn_key
 
 Type: B<bool>
@@ -600,13 +700,51 @@ Type: B<bool>
 Indicate if data has to be cached not by C<$key> but by L<functional key|/fn_key>
 (default L</use_fn_key>).
 
+=item fn_key_flatten_args
+
+Type: B<coderef>
+
+Subroutine to make string from sub/method arguments for current caching
+(default L</default_flatten_args>) when C<fn_key> is C<true>.
+
+=item fn_key_no_encode_utf8
+
+Type: B<bool>
+
+Indicate if Encode::encode_utf8 should be done on key generation when  C<fn_key> is C<true>.
+
 =back
 
 
-=method fn_key ($key, \@arguments, \&flatten_args?)
+=method fn_key ($key, \@arguments, \%options?)
+
+Generate cache key for C<$key> and @arguments.
+
+Addition C<\%options> could be provided.
+
+Available C<options>:
+
+=over
+
+=item flatten_args
+
+Type: B<coderef>
+
+Default: L</default_flatten_args>
 
 Generate cache key for C<$key> and @arguments via C<flatten_args>
-(default L</default_flatten_args>).
+
+=item no_encode_utf8
+
+Type: B<bool>
+
+Default: false
+
+Since L</fn_key> generation is based on MD5 hash,
+indicate that data (C<$key> and C<\@arguments>) passed to MD5 should be UTF8 encoded
+(via L<Encode/encode_utf8>).
+
+=back
 
 
 =method default_flatten_args ($arguments?, $prepend?, $key?)
