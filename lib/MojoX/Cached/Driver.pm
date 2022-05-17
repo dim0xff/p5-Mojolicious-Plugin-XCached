@@ -31,16 +31,18 @@ Default expiration time in seconds for driver.
 Default is C<undef> (cache forever).
 
 
-=method get ($key, \%opts?, $cb?)
+=method get ($key, \%options?, \&cb?)
 
 Get cached value by C<$key>.
-Optional driver options C<\%opts> could be passed.
-Optional callback C<$cb> could be added for non-blocking C<get>.
+Optional driver C<\%options> could be passed.
+Optional callback C<\&cb> could be added for non-blocking C<get>.
 
-Driver MUST support key C<t> in C<\%opts> which represents current time.
+Driver B<MUST> support key C<t> in C<\%options> which represents current time.
 If there are no C<t> key, then current time (via C<time()> will be used).
 
-On success returns C<\%result>:
+I<Success> means I<data is cached and not expired yet>.
+
+On B<success returns> C<\%result>:
 
     {
         value     => ..., # cached data
@@ -50,7 +52,7 @@ On success returns C<\%result>:
         ...
     }
 
-On fail returns nothing.
+On B<fail returns> nothing.
 
 If callback is provided, then returns data from callback call.
 Callback will be called as:
@@ -61,38 +63,66 @@ Callback will be called as:
     # On fail
     $cb->( $driver )
 
+I<Note about expiration.>
+If data is cached but expired, then C<-E<gt>expire> will be called
+for provided key.
 
-=method set ($key, $data, \%opts?, $cb?)
+=method set ($key, $data, \%options?, \&cb?)
 
 Cache C<$data> by C<$key>.
-Optional driver options C<\%opts> could be passed.
-Optional callback C<$cb> could be added as last argument for
+Optional driver C<\%options> could be passed.
+Optional callback C<\&cb> could be added as last argument for
 non-blocking C<set>.
 
-Driver MUST support key C<t> in C<\%opts> which represents current time.
+Driver B<MUST> support key C<t> in C<\%options> which represents current time.
 If there are no C<t> key, then current time (via C<time()> will be used).
 
-Driver MUST support key C<expire_in> in C<\%opts> which represents
+Driver B<MUST> support key C<expire_in> in C<\%options> which represents
 expiration time in seconds (default L</expire_in>).
 
-On success returns like-L</get> HASH, otherwise returns nothing.
+I<Success> means I<data is successfuly cached>.
+
+On B<success returns> like-L</get> HASH
+
+On B<fail returns> nothing.
 
 If callback is provided, then returns data from callback call.
-On success HASH will be passed as second argument to callback.
+Callback will be called as:
 
-=method expire ($key, $cb?)
+    # On success
+    $cb->( $driver, \%result )
 
-Expire cached data by C<$key>. Returns expire status.
+    # On fail
+    $cb->( $driver )
 
-Optional callback C<$cb> could be added as last argument for
+=method expire ($key, \%options?, \&cb?)
+
+Expire cached data by C<$key>. B<Returns> expire status:
+success(true value) or fail(false value).
+
+Optional driver C<\%options> could be passed.
+Optional callback C<\&cb> could be added as last argument for
 non-blocking C<expire>.
-Expire status will be passed as second argument.
+
+I<Success> means I<data was found and removed from cache>.
+
 If callback is provided, then returns data from callback call.
+Expire status will be passed as second argument:
 
-=method flush($cb?)
+    # On success
+    $cb->( $driver, 1 )
 
-Clear cache. Returns nothing.
+    # On fail
+    $cb->( $driver, !!0 )
 
-Optional callback C<$cb> could be added as last argument for
-non-blocking C<flush>. Will be fired once cache is flushed.
-Data returned from callback will be returned to caller.
+=method flush(\%options?, \&cb?)
+
+Clears cache. B<Returns> nothing.
+
+Optional driver C<\%options> could be passed.
+Optional callback C<\&cb> could be added as last argument for
+non-blocking C<flush>. Callback will be fired once cache is flushed.
+
+Data returned from callback will be returned to caller. Callback will be called as:
+
+    $cb->( $driver )
